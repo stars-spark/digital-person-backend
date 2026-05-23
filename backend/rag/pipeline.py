@@ -169,4 +169,3 @@ async def answer_stream(
         })
 
     save_conversation(session_id, scenic_id, query, reply, emotion, context_used)
-    yield f"\n[情绪:{emotion}]"
