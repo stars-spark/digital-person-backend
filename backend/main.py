@@ -5,8 +5,10 @@ for _var in ("ALL_PROXY", "all_proxy", "HTTPS_PROXY", "https_proxy",
     os.environ.pop(_var, None)
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from backend.api.chat import router as chat_router
 from backend.api.knowledge import router as kb_router
@@ -52,3 +54,10 @@ app.include_router(analytics_router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/test", include_in_schema=False)
+def test_ui():
+    """后端托管测试面板，避免 file:// 跨域问题。"""
+    p = Path(__file__).resolve().parent.parent / "test_ui.html"
+    return FileResponse(p, media_type="text/html")

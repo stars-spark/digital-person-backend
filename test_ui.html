@@ -137,7 +137,7 @@
   <div id="status-dot"></div>
   <h1>数字人后端测试面板</h1>
   <span id="status-label">检查中…</span>
-  <input id="base-input" type="text" value="http://116.62.136.211:8000" placeholder="Backend URL" title="修改后回车刷新状态">
+  <input id="base-input" type="text" value="" placeholder="Backend URL" title="修改后回车刷新状态">
 </header>
 
 <!-- ── 标签页导航 ── -->
@@ -329,7 +329,18 @@
 
 <!-- ══════════════════════════════════════════════════════ -->
 <script>
-let BASE = document.getElementById('base-input').value.replace(/\/$/, '');
+// 自动检测 Base URL：
+// - 从后端访问（http/https）→ 用当前页面的 origin（同源，无 CORS 问题）
+// - 从本地文件 file:// 打开   → 用默认云端地址
+const _autoBase = (() => {
+  if (location.protocol === 'http:' || location.protocol === 'https:') {
+    return location.origin;
+  }
+  return 'http://116.62.136.211:8000';
+})();
+document.getElementById('base-input').value = _autoBase;
+let BASE = _autoBase;
+
 document.getElementById('base-input').addEventListener('change', e => {
   BASE = e.target.value.replace(/\/$/, '');
   checkHealth();
@@ -419,6 +430,13 @@ async function doStream() {
       body: JSON.stringify({ message: msg, scenic_id: scenic, session_id: 'ui-test', fast, stream: true }),
     });
 
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+    if (!response.body) {
+      throw new Error('浏览器不支持 Response.body 流式读取，请用 Chrome/Edge 最新版');
+    }
+
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '', currentEvent = '';
@@ -461,7 +479,14 @@ async function doStream() {
     }
   } catch (e) {
     cursor.remove();
-    sentList.innerHTML = `<p style="color:var(--excited)">请求失败：${e.message}</p>`;
+    const isCors = e.message.includes('Failed to fetch') || e.message.includes('input stream');
+    sentList.innerHTML = `
+      <p style="color:var(--excited);margin-bottom:8px">❌ ${e.message}</p>
+      ${isCors ? `<p style="font-size:12px;color:var(--muted)">
+        可能是跨域问题（页面从 file:// 打开）。<br>
+        请改用：<b><a href="${BASE}/test" target="_blank" style="color:var(--accent)">${BASE}/test</a></b> 访问测试面板。
+      </p>` : ''}
+    `;
   } finally {
     btn.disabled = false; btn.textContent = '发送';
   }
