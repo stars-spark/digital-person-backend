@@ -53,16 +53,19 @@ def answer(
     history: list[dict] | None = None,
     session_id: str = "anonymous",
     fast: bool = False,
+    lang: str = "auto",
 ) -> dict:
     """
     同步问答。fast=True 使用 qwen-turbo（延迟减半，适合简单问答）。
+    lang: "auto"（跟随提问语言）或语言代码（en/ja/ko…）强制指定回答语言。
     返回: { reply, emotion, sources, context_used }
     """
     history = history or []
+    cache_query = f"{lang}::{query}"  # 按语言隔离缓存，避免跨语种串答
 
     # ── 缓存命中：无历史时才缓存（历史对话有上下文，不能复用） ──────
     if not history:
-        cached = answer_cache.get(scenic_id, query)
+        cached = answer_cache.get(scenic_id, cache_query)
         if cached:
             save_conversation(session_id, scenic_id, query,
                               cached["reply"], cached["emotion"], cached["context_used"])
@@ -73,7 +76,7 @@ def answer(
     context_chunks = retrieve(retrieval_query, scenic_id)
     context_used = len(context_chunks) > 0
 
-    system_prompt = build_system_prompt(cfg["name"], cfg["guide_name"], context_chunks)
+    system_prompt = build_system_prompt(cfg["name"], cfg["guide_name"], context_chunks, lang)
     raw_reply = chat(system_prompt, history, query, fast=fast)
     reply, emotion = extract_emotion(raw_reply)
 
@@ -87,7 +90,7 @@ def answer(
     }
 
     if not history:
-        answer_cache.set(scenic_id, query, result)
+        answer_cache.set(scenic_id, cache_query, result)
 
     save_conversation(session_id, scenic_id, query, reply, emotion, context_used)
     return result
@@ -114,6 +117,7 @@ async def answer_stream(
     history: list[dict] | None = None,
     session_id: str = "anonymous",
     fast: bool = False,
+    lang: str = "auto",
 ):
     """
     分句流式版本，yield 结构化事件 dict（供 SSE 下发给数字人驱动端）：
@@ -123,12 +127,14 @@ async def answer_stream(
 
     第一个事件（emotion）在 LLM 输出第一个 token 后毫秒级下发，
     数字人表情无需等待全文生成完毕。
+    lang: "auto"（跟随提问语言）或语言代码（en/ja/ko…）强制指定回答语言。
     """
     history = history or []
+    cache_query = f"{lang}::{query}"  # 按语言隔离缓存
 
     # ── 缓存命中：模拟分句流，接口与正常流保持一致 ────────────────────
     if not history:
-        cached = answer_cache.get(scenic_id, query)
+        cached = answer_cache.get(scenic_id, cache_query)
         if cached:
             save_conversation(session_id, scenic_id, query,
                               cached["reply"], cached["emotion"], cached["context_used"])
@@ -147,7 +153,7 @@ async def answer_stream(
         context_chunks = await asyncio.to_thread(retrieve, retrieval_query, scenic_id)
 
     context_used = len(context_chunks) > 0
-    system_prompt = build_system_prompt(cfg["name"], cfg["guide_name"], context_chunks)
+    system_prompt = build_system_prompt(cfg["name"], cfg["guide_name"], context_chunks, lang)
 
     full_text = ""
     emotion = "neutral"
@@ -162,7 +168,7 @@ async def answer_stream(
     reply, _ = extract_emotion(full_text)
 
     if not history:
-        answer_cache.set(scenic_id, query, {
+        answer_cache.set(scenic_id, cache_query, {
             "reply": reply, "emotion": emotion,
             "sources": list({c.split("|")[0].strip() for c in context_chunks}),
             "context_used": context_used, "scenic_id": scenic_id,

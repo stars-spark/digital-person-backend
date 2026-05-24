@@ -23,10 +23,39 @@ SYSTEM_PROMPT_TEMPLATE = """你是{scenic_name}的专属AI导游，名叫"{guide
 3. 如果问题与景区无关，礼貌地引导游客回到景区话题
 4. 如果知识库中没有足够信息，诚实说"这个问题我需要进一步查阅，您可以向工作人员咨询"
 5. 涉及价格、时间等易变信息时，提醒游客以景区现场公告为准
-
+{lang_directive}
 【景区知识库】
 {context}
 """
+
+# 语言代码 → 名称（用于强制指定回答语言）
+LANG_NAMES = {
+    "en": "English",
+    "ja": "日本語",
+    "ko": "한국어",
+    "fr": "Français",
+    "de": "Deutsch",
+    "es": "Español",
+    "ru": "Русский",
+    "zh": "简体中文",
+}
+
+
+def _build_lang_directive(lang: str) -> str:
+    """生成回答语言指令。情绪标签始终保持中文固定格式，仅正文切换语言。"""
+    if lang == "auto":
+        return (
+            "\n【回答语言】请用游客提问所使用的语言回答正文"
+            "（中文提问用中文答，English question → answer in English）。"
+            "但开头的情绪标签 [情绪:X] 必须始终保持上述中文固定格式，不要翻译它。\n"
+        )
+    name = LANG_NAMES.get(lang)
+    if not name:
+        return ""
+    return (
+        f"\n【回答语言】无论游客用什么语言提问，正文一律用 {name} 回答。"
+        f"但开头的情绪标签 [情绪:X] 必须保持上述中文固定格式，不要翻译它。\n"
+    )
 
 QUERY_REWRITE_PROMPT = """你是一个搜索查询优化专家。将游客的口语问题改写为更适合向量检索的标准形式。
 
@@ -59,10 +88,12 @@ def build_system_prompt(
     scenic_name: str,
     guide_name: str,
     context_chunks: list[str],
+    lang: str = "auto",
 ) -> str:
     context = "\n\n---\n\n".join(context_chunks) if context_chunks else "（暂无相关资料）"
     return SYSTEM_PROMPT_TEMPLATE.format(
         scenic_name=scenic_name,
         guide_name=guide_name,
         context=context,
+        lang_directive=_build_lang_directive(lang),
     )
