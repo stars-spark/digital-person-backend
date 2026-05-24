@@ -13,8 +13,10 @@
   - [1.1 文本对话（同步）](#11-文本对话同步)
   - [1.2 文本对话（流式 SSE）](#12-文本对话流式-sse)
   - [1.3 图片对话（多模态）](#13-图片对话多模态)
+  - [1.4 多语言问答](#14-多语言问答)
 - [2. 知识库管理](#2-知识库管理)
 - [3. 数据分析（管理后台用）](#3-数据分析管理后台用)
+- [4. 数字人形象配置](#4-数字人形象配置)
 - [附录：数据类型说明](#附录数据类型说明)
 
 ---
@@ -40,6 +42,7 @@ Content-Type: application/json
 | `session_id` | string | | 会话 ID，用于区分用户，默认 `"anonymous"` |
 | `history` | array | | 历史对话，格式见下，默认空 |
 | `fast` | bool | | `true` 用 qwen-turbo（延迟减半，适合简单问答），默认 `false` |
+| `lang` | string | | 回答语言，`auto`（跟随提问语言）或 `en`/`ja`/`ko`… 强制指定，默认 `auto`，详见 1.4 节 |
 | `stream` | bool | | 必须为 `false`（或不填），流式用 1.2 节 |
 
 **景区 ID 枚举**
@@ -291,6 +294,35 @@ async function chatWithImage(file, question, scenicId) {
 
 ---
 
+### 1.4 多语言问答
+
+> 服务外籍游客。通过 `/chat`（同步或流式）的 `lang` 参数控制回答语言，接口其余字段不变。
+
+**两种模式**
+
+| `lang` 取值 | 行为 | 适用场景 |
+|---|---|---|
+| `auto`（默认） | 自动跟随游客提问的语言（英文问 → 英文答） | 外宾直接用母语提问 |
+| `en` / `ja` / `ko` / `fr` / `de` / `es` / `ru` / `zh` | 无论提问语言，强制用指定语言回答 | 前端语言切换按钮 |
+
+**请求示例**
+
+```bash
+# 英文提问，自动英文作答
+curl -X POST http://116.62.136.211:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"How tall is the Grand Buddha?","scenic_id":"lingshan"}'
+
+# 中文提问，强制英文作答
+curl -X POST http://116.62.136.211:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"灵山大佛多高","scenic_id":"lingshan","lang":"en"}'
+```
+
+> **队友 A 注意**：`emotion` 事件值始终是固定的英文键（`happy`/`excited`…），不随回答语言变化，数字人表情控制逻辑无需改动。
+
+---
+
 ## 2. 知识库管理
 
 > **队友 B（管理后台用）**：用于上传新景区文档、查看知识库状态。
@@ -474,6 +506,151 @@ Content-Type: application/json
 }
 ```
 
+### 3.6 知识盲区（知识库自进化闭环）
+
+> 找出游客问过、但知识库答不上来的问题（`context_used=0`），按频次排序，
+> 指导管理员针对性补充文档。`cluster=true` 时调 LLM 把盲区归纳成主题并给出补充建议。
+
+```
+GET /analytics/knowledge-gaps?scenic_id=lingshan&days=30&limit=20&cluster=false
+```
+
+| 参数 | 说明 | 默认 |
+|---|---|---|
+| `scenic_id` | 景区 ID | `lingshan` |
+| `days` | 近 N 天 | `30` |
+| `limit` | 返回盲区条数 | `20` |
+| `cluster` | `true` 时额外调 LLM 归纳主题+建议（消耗 API） | `false` |
+
+```json
+{
+  "scenic_id": "lingshan",
+  "period_days": 30,
+  "total_conversations": 128,
+  "total_unanswered": 9,
+  "unanswered_rate": 0.07,
+  "gaps": [
+    {"question": "灵山有充电宝租借吗", "count": 3, "last_asked": "2026-05-24 11:49:35"},
+    {"question": "景区内能带宠物吗", "count": 1, "last_asked": "2026-05-24 10:12:00"}
+  ],
+  "suggestions": "（仅 cluster=true 时返回）## 1. 便民服务\n建议补充充电宝租借点位置..."
+}
+```
+
+### 3.7 实时负面情绪预警
+
+> 在时间窗口内聚合负面情绪（`empathetic`/`apologetic`），负面数 ≥ `threshold`
+> 且占比 ≥ `min_rate` 时触发告警，附负面对话样本，供管理方实时定位投诉热点。
+
+```
+GET /analytics/alerts?scenic_id=lingshan&window_hours=24&threshold=3&min_rate=0.3
+```
+
+| 参数 | 说明 | 默认 |
+|---|---|---|
+| `scenic_id` | 景区 ID，**留空则扫描全部景区** | 全部 |
+| `window_hours` | 统计时间窗口（小时） | `24` |
+| `threshold` | 触发告警所需最少负面对话数 | `3` |
+| `min_rate` | 触发告警所需最低负面占比 | `0.3` |
+
+```json
+{
+  "scenic_id": "all",
+  "window_hours": 24,
+  "alert_triggered": false,
+  "total_in_window": 37,
+  "negative_count": 4,
+  "negative_rate": 0.108,
+  "threshold": 3,
+  "min_rate": 0.3,
+  "negative_by_scenic": {"nihuawan": 3, "lingshan": 1},
+  "samples": [
+    {"scenic_id": "lingshan", "question": "排队太久了", "emotion": "apologetic", "asked_at": "2026-05-24 12:02:43"}
+  ]
+}
+```
+
+---
+
+## 4. 数字人形象配置
+
+> **队友 B（管理后台「数字人形象管理」页用）**：配置数字人外观与音色，支持按景区分别设置。  
+> **队友 A**：渲染时读取 config 的 `avatar_id` / `voice_id` 传给数字人 SDK。  
+> 注：当前形象/音色 ID 为占位值，接入阿里云/讯飞数字人后替换为真实 ID，接口契约不变。
+
+### 4.1 获取可选形象与音色列表
+
+```
+GET /digital-human/presets
+```
+
+```json
+{
+  "avatars": [
+    {"id": "female_elegant", "name": "素雅女性", "style": "古典", "gender": "female"},
+    {"id": "male_mature",    "name": "沉稳男性", "style": "古典", "gender": "male"}
+  ],
+  "voices": [
+    {"id": "voice_gentle_f", "name": "温柔女声", "gender": "female", "style": "gentle"},
+    {"id": "voice_calm_m",   "name": "沉稳男声", "gender": "male",   "style": "calm"}
+  ]
+}
+```
+
+### 4.2 获取某景区配置
+
+```
+GET /digital-human/config?scenic_id=lingshan
+```
+
+未单独配置时回落到 `default`；`default` 也未配置时返回内置默认值（带 `"fallback": true`）。
+
+```json
+{
+  "scenic_id": "lingshan",
+  "avatar_id": "female_elegant",
+  "avatar_name": "素雅女性",
+  "voice_id": "voice_gentle_f",
+  "voice_name": "温柔女声",
+  "updated_at": "2026-05-24 11:34:43"
+}
+```
+
+### 4.3 保存/更新配置
+
+```
+PUT /digital-human/config
+Content-Type: application/json
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `scenic_id` | string | ✅ | 景区 ID，`default` 表示全局默认 |
+| `avatar_id` | string | ✅ | 形象 ID，须来自 presets |
+| `avatar_name` | string | ✅ | 形象显示名 |
+| `voice_id` | string | ✅ | 音色 ID，须来自 presets |
+| `voice_name` | string | ✅ | 音色显示名 |
+
+```bash
+curl -X PUT http://116.62.136.211:8000/digital-human/config \
+  -H "Content-Type: application/json" \
+  -d '{"scenic_id":"lingshan","avatar_id":"female_elegant","avatar_name":"素雅女性","voice_id":"voice_gentle_f","voice_name":"温柔女声"}'
+```
+
+```json
+{ "ok": true, "scenic_id": "lingshan" }
+```
+
+> 提示：可为每个景区配置不同形象+音色（灵山禅意女声、故宫古风男声），切换景区时一并切换形象，体现「插拔式」设计。
+
+### 4.4 获取全部景区配置
+
+```
+GET /digital-human/config/all
+```
+
+返回已配置的所有景区快照数组，用于管理后台列表页。
+
 ---
 
 ## 附录：数据类型说明
@@ -517,4 +694,4 @@ Content-Type: application/json
 
 ---
 
-*文档版本：v0.3 | 更新日期：2026-05-23*
+*文档版本：v0.4 | 更新日期：2026-05-24*
