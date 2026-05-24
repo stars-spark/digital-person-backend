@@ -244,7 +244,74 @@ def knowledge_gaps(
     return result
 
 
-# ── 6. LLM 生成游客感受度报告（按需，会消耗 API） ─────────────────
+# ── 6. 实时负面情绪预警（闭环2） ──────────────────────────────────
+def _hours_ago(hours: float) -> str:
+    return (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+@router.get("/alerts")
+def alerts(
+    scenic_id: str | None = None,
+    window_hours: float = 24,
+    threshold: int = 3,
+    min_rate: float = 0.3,
+):
+    """
+    实时负面情绪预警：统计时间窗口内的负面情绪（empathetic/apologetic）。
+    当负面对话数 ≥ threshold 且负面占比 ≥ min_rate 时触发告警。
+
+    scenic_id 为空时扫描全部景区。返回告警状态 + 负面对话样本（供管理员定位）。
+    """
+    since = _hours_ago(window_hours)
+    conditions = ["created_at >= ?"]
+    params: list = [since]
+    if scenic_id:
+        conditions.append("scenic_id = ?")
+        params.append(scenic_id)
+    where = " AND ".join(conditions)
+
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT scenic_id, user_message, ai_reply, emotion, created_at "
+            f"FROM conversations WHERE {where} ORDER BY created_at DESC",
+            params,
+        ).fetchall()
+
+    total = len(rows)
+    negatives = [r for r in rows if r["emotion"] in _NEGATIVE]
+    neg_count = len(negatives)
+    neg_rate = round(neg_count / total, 3) if total else 0.0
+
+    triggered = neg_count >= threshold and neg_rate >= min_rate
+
+    # 负面情绪集中在哪些景区
+    by_scenic = Counter(r["scenic_id"] for r in negatives)
+
+    samples = [
+        {
+            "scenic_id":  r["scenic_id"],
+            "question":   r["user_message"],
+            "emotion":    r["emotion"],
+            "asked_at":   r["created_at"],
+        }
+        for r in negatives[:10]
+    ]
+
+    return {
+        "scenic_id":        scenic_id or "all",
+        "window_hours":     window_hours,
+        "alert_triggered":  triggered,
+        "total_in_window":  total,
+        "negative_count":   neg_count,
+        "negative_rate":    neg_rate,
+        "threshold":        threshold,
+        "min_rate":         min_rate,
+        "negative_by_scenic": dict(by_scenic),
+        "samples":          samples,
+    }
+
+
+# ── 7. LLM 生成游客感受度报告（按需，会消耗 API） ─────────────────
 class ReportRequest(BaseModel):
     scenic_id: str = "lingshan"
     days: int = 7
