@@ -174,7 +174,77 @@ def conversations(
     }
 
 
-# ── 5. LLM 生成游客感受度报告（按需，会消耗 API） ─────────────────
+# ── 5. 知识盲区（闭环1：游客问了但知识库答不上来的问题） ──────────
+def _normalize_q(q: str) -> str:
+    """归一化问题文本，用于合并近似提问。"""
+    return "".join(ch for ch in q if ch not in " \t\n，。？！、：；,.?!:;\"'").strip()
+
+
+@router.get("/knowledge-gaps")
+def knowledge_gaps(
+    scenic_id: str = "lingshan",
+    days: int = 30,
+    limit: int = 20,
+    cluster: bool = False,
+):
+    """
+    返回知识库未命中的提问（context_used=0），按频次降序。
+    这些是知识库的盲区——管理员据此补充文档，让知识库越用越准。
+
+    cluster=True 时额外调用 LLM 把盲区聚成主题并给出补充建议（消耗 API）。
+    """
+    since = _date_range(days)
+    with get_db() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM conversations WHERE scenic_id=? AND created_at>=?",
+            (scenic_id, since),
+        ).fetchone()[0]
+        rows = conn.execute(
+            "SELECT user_message, created_at FROM conversations "
+            "WHERE scenic_id=? AND created_at>=? AND context_used=0 "
+            "ORDER BY created_at DESC",
+            (scenic_id, since),
+        ).fetchall()
+
+    # 按归一化文本合并近似提问
+    grouped: dict[str, dict] = {}
+    for r in rows:
+        key = _normalize_q(r["user_message"])
+        if not key:
+            continue
+        if key not in grouped:
+            grouped[key] = {"question": r["user_message"], "count": 0,
+                            "last_asked": r["created_at"]}
+        grouped[key]["count"] += 1
+
+    gaps = sorted(grouped.values(), key=lambda x: x["count"], reverse=True)[:limit]
+
+    result = {
+        "scenic_id": scenic_id,
+        "period_days": days,
+        "total_conversations": total,
+        "total_unanswered": len(rows),
+        "unanswered_rate": round(len(rows) / total, 3) if total else 0.0,
+        "gaps": gaps,
+    }
+
+    if cluster and gaps:
+        gap_list = "\n".join(f"- {g['question']}（被问 {g['count']} 次）" for g in gaps)
+        prompt = f"""你是景区知识库运营专家。以下是{scenic_id}景区数字人导游"答不上来"的游客提问（知识库未命中）：
+
+{gap_list}
+
+请把这些问题归纳成 2-4 个主题，每个主题给出：
+1. **主题名**
+2. **建议补充的知识内容**（具体到该写什么文档/资料）
+
+输出用 Markdown，简洁，供管理员据此补充知识库。"""
+        result["suggestions"] = chat(prompt, [], "请归纳并给出补充建议")
+
+    return result
+
+
+# ── 6. LLM 生成游客感受度报告（按需，会消耗 API） ─────────────────
 class ReportRequest(BaseModel):
     scenic_id: str = "lingshan"
     days: int = 7
