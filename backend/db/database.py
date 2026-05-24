@@ -31,6 +31,17 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_scenic_time ON conversations(scenic_id, created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_session      ON conversations(session_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS digital_human_config (
+                scenic_id    TEXT PRIMARY KEY,
+                avatar_id    TEXT NOT NULL DEFAULT 'female_elegant',
+                avatar_name  TEXT NOT NULL DEFAULT '素雅女性',
+                voice_id     TEXT NOT NULL DEFAULT 'voice_gentle_f',
+                voice_name   TEXT NOT NULL DEFAULT '温柔女声',
+                updated_at   TEXT NOT NULL
+                             DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
+            )
+        """)
         conn.commit()
 
 
