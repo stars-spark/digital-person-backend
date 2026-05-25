@@ -24,6 +24,7 @@ class ChatResponse(BaseModel):
     emotion: str            # happy / excited / neutral / curious / empathetic / apologetic
     sources: list[str]
     context_used: bool
+    intent: str = "qa"      # qa / navigation / recommend / empathy / chitchat（Orchestrator 分派结果）
     from_cache: bool = False
 
 
@@ -34,6 +35,9 @@ async def chat_endpoint(req: ChatRequest):
             """
             标准 SSE 格式，带命名事件类型，供数字人驱动端订阅：
 
+              event: intent
+              data: {"type":"intent","value":"navigation","label":"路线规划"}
+
               event: emotion
               data: {"type":"emotion","value":"happy"}
 
@@ -43,8 +47,12 @@ async def chat_endpoint(req: ChatRequest):
               event: end
               data: {"type":"end","full_text":"..."}
 
+            事件顺序：intent（最早，LLM 调用前）→ emotion（首 token 后）→ sentence… → end
+            intent 为 Orchestrator 分派结果，前端可用于展示"当前意图"或忽略。
+
             前端示例（JS）：
               const es = new EventSource('/chat?stream=1')
+              es.addEventListener('intent',   e => showIntent(JSON.parse(e.data).label))
               es.addEventListener('emotion',  e => setExpression(JSON.parse(e.data).value))
               es.addEventListener('sentence', e => sendToTTS(JSON.parse(e.data).text))
               es.addEventListener('end',      e => es.close())

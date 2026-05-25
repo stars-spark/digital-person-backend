@@ -23,7 +23,7 @@ SYSTEM_PROMPT_TEMPLATE = """你是{scenic_name}的专属AI导游，名叫"{guide
 3. 如果问题与景区无关，礼貌地引导游客回到景区话题
 4. 如果知识库中没有足够信息，诚实说"这个问题我需要进一步查阅，您可以向工作人员咨询"
 5. 涉及价格、时间等易变信息时，提醒游客以景区现场公告为准
-{lang_directive}
+{task_directive}{lang_directive}
 【景区知识库】
 {context}
 """
@@ -89,11 +89,13 @@ def build_system_prompt(
     guide_name: str,
     context_chunks: list[str],
     lang: str = "auto",
+    task_directive: str = "",
 ) -> str:
     context = "\n\n---\n\n".join(context_chunks) if context_chunks else "（暂无相关资料）"
     return SYSTEM_PROMPT_TEMPLATE.format(
         scenic_name=scenic_name,
         guide_name=guide_name,
         context=context,
+        task_directive=task_directive,
         lang_directive=_build_lang_directive(lang),
     )

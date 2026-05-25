@@ -16,6 +16,9 @@ from backend.llm.prompts import build_system_prompt, QUERY_REWRITE_PROMPT, needs
 from backend.llm.client import chat, chat_stream, extract_emotion
 from backend.db.database import save_conversation
 from backend.core.config import settings
+from backend.agent.orchestrator import classify
+from backend.agent.handlers import intent_directive, skip_retrieval
+from backend.agent.intents import INTENT_LABELS
 
 SCENIC_CONFIG: dict[str, dict] = {
     "lingshan":  {"name": "灵山胜境",   "guide_name": "灵山小慧"},
@@ -72,11 +75,18 @@ def answer(
             return {**cached, "from_cache": True}
 
     cfg = get_scenic_config(scenic_id)
-    retrieval_query = rewrite_query(query, history)  # 改写后用于检索，原 query 用于 LLM
-    context_chunks = retrieve(retrieval_query, scenic_id)
+    intent = classify(query, history)  # Orchestrator 分派：决定走哪条处理链路
+
+    if skip_retrieval(intent):         # 闲聊无需检索知识库，省一次检索延迟
+        context_chunks = []
+    else:
+        retrieval_query = rewrite_query(query, history)  # 改写后用于检索，原 query 用于 LLM
+        context_chunks = retrieve(retrieval_query, scenic_id)
     context_used = len(context_chunks) > 0
 
-    system_prompt = build_system_prompt(cfg["name"], cfg["guide_name"], context_chunks, lang)
+    system_prompt = build_system_prompt(
+        cfg["name"], cfg["guide_name"], context_chunks, lang, intent_directive(intent)
+    )
     raw_reply = chat(system_prompt, history, query, fast=fast)
     reply, emotion = extract_emotion(raw_reply)
 
@@ -85,6 +95,7 @@ def answer(
         "emotion": emotion,
         "sources": list({c.split("|")[0].strip() for c in context_chunks}),
         "context_used": context_used,
+        "intent": intent.value,
         "scenic_id": scenic_id,
         "from_cache": False,
     }
@@ -131,6 +142,10 @@ async def answer_stream(
     """
     history = history or []
     cache_query = f"{lang}::{query}"  # 按语言隔离缓存
+    intent = classify(query, history)  # 先分派；无历史时纯规则匹配，0ms
+
+    def _intent_event() -> dict:
+        return {"type": "intent", "value": intent.value, "label": INTENT_LABELS[intent]}
 
     # ── 缓存命中：模拟分句流，接口与正常流保持一致 ────────────────────
     if not history:
@@ -138,6 +153,7 @@ async def answer_stream(
         if cached:
             save_conversation(session_id, scenic_id, query,
                               cached["reply"], cached["emotion"], cached["context_used"])
+            yield _intent_event()
             yield {"type": "emotion", "value": cached["emotion"]}
             for i, s in enumerate(_split_to_sentences(cached["reply"])):
                 yield {"type": "sentence", "text": s, "index": i}
@@ -145,15 +161,22 @@ async def answer_stream(
             return
 
     cfg = get_scenic_config(scenic_id)
-    retrieval_query = await asyncio.to_thread(rewrite_query, query, history)
 
-    if settings.deploy_mode == "cloud":
-        context_chunks = await retrieve_async(retrieval_query, scenic_id)
+    if skip_retrieval(intent):         # 闲聊跳过检索
+        context_chunks = []
     else:
-        context_chunks = await asyncio.to_thread(retrieve, retrieval_query, scenic_id)
+        retrieval_query = await asyncio.to_thread(rewrite_query, query, history)
+        if settings.deploy_mode == "cloud":
+            context_chunks = await retrieve_async(retrieval_query, scenic_id)
+        else:
+            context_chunks = await asyncio.to_thread(retrieve, retrieval_query, scenic_id)
 
     context_used = len(context_chunks) > 0
-    system_prompt = build_system_prompt(cfg["name"], cfg["guide_name"], context_chunks, lang)
+    system_prompt = build_system_prompt(
+        cfg["name"], cfg["guide_name"], context_chunks, lang, intent_directive(intent)
+    )
+
+    yield _intent_event()  # intent 在 LLM 调用前即可下发，比 emotion 更早
 
     full_text = ""
     emotion = "neutral"
@@ -171,7 +194,7 @@ async def answer_stream(
         answer_cache.set(scenic_id, cache_query, {
             "reply": reply, "emotion": emotion,
             "sources": list({c.split("|")[0].strip() for c in context_chunks}),
-            "context_used": context_used, "scenic_id": scenic_id,
+            "context_used": context_used, "intent": intent.value, "scenic_id": scenic_id,
         })
 
     save_conversation(session_id, scenic_id, query, reply, emotion, context_used)
