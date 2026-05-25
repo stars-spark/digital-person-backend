@@ -57,14 +57,17 @@ def answer(
     session_id: str = "anonymous",
     fast: bool = False,
     lang: str = "auto",
+    group_type: str = "adult",
 ) -> dict:
     """
     同步问答。fast=True 使用 qwen-turbo（延迟减半，适合简单问答）。
     lang: "auto"（跟随提问语言）或语言代码（en/ja/ko…）强制指定回答语言。
-    返回: { reply, emotion, sources, context_used }
+    group_type: 同行关系（adult/family_kids/senior/couple），切换叙事人格。
+    返回: { reply, emotion, sources, context_used, intent }
     """
     history = history or []
-    cache_query = f"{lang}::{query}"  # 按语言隔离缓存，避免跨语种串答
+    # 按 人格 + 语言 隔离缓存，避免跨人格/跨语种串答
+    cache_query = f"{group_type}::{lang}::{query}"
 
     # ── 缓存命中：无历史时才缓存（历史对话有上下文，不能复用） ──────
     if not history:
@@ -85,7 +88,8 @@ def answer(
     context_used = len(context_chunks) > 0
 
     system_prompt = build_system_prompt(
-        cfg["name"], cfg["guide_name"], context_chunks, lang, intent_directive(intent)
+        cfg["name"], cfg["guide_name"], context_chunks, lang,
+        intent_directive(intent), group_type,
     )
     raw_reply = chat(system_prompt, history, query, fast=fast)
     reply, emotion = extract_emotion(raw_reply)
@@ -129,6 +133,7 @@ async def answer_stream(
     session_id: str = "anonymous",
     fast: bool = False,
     lang: str = "auto",
+    group_type: str = "adult",
 ):
     """
     分句流式版本，yield 结构化事件 dict（供 SSE 下发给数字人驱动端）：
@@ -141,7 +146,7 @@ async def answer_stream(
     lang: "auto"（跟随提问语言）或语言代码（en/ja/ko…）强制指定回答语言。
     """
     history = history or []
-    cache_query = f"{lang}::{query}"  # 按语言隔离缓存
+    cache_query = f"{group_type}::{lang}::{query}"  # 按 人格+语言 隔离缓存
     intent = classify(query, history)  # 先分派；无历史时纯规则匹配，0ms
 
     def _intent_event() -> dict:
@@ -173,7 +178,8 @@ async def answer_stream(
 
     context_used = len(context_chunks) > 0
     system_prompt = build_system_prompt(
-        cfg["name"], cfg["guide_name"], context_chunks, lang, intent_directive(intent)
+        cfg["name"], cfg["guide_name"], context_chunks, lang,
+        intent_directive(intent), group_type,
     )
 
     yield _intent_event()  # intent 在 LLM 调用前即可下发，比 emotion 更早

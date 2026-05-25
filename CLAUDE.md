@@ -361,41 +361,28 @@ RAG 后端已是满分（97.7%），差距在视觉层，应把有限时间投�
 
 ## 「灵境·导览」升级任务清单（来自新idea文档）
 
-### 创新一：多智能体 Orchestrator（最高优先级）
+### 创新一：多智能体 Orchestrator（已完成 MVP，commit 6d96376）
 
-系统当前是单体 RAG 问答机，新架构在 pipeline 前加一层意图分派：
+- [x] **意图分类器**（`backend/agent/orchestrator.py`）
+  - 五类：`qa` / `navigation` / `recommend` / `empathy` / `chitchat`
+  - 混合策略：规则快筛命中即路由（0ms），模糊才 qwen-turbo 兜底
+- [x] **意图处理器**（`backend/agent/handlers.py`）
+  - 每类意图注入差异化任务指令到 system prompt（统一链路，无需独立模型）
+  - 闲聊跳过 RAG 检索
+- [x] **接入 `/chat` 主链路**（`pipeline.py` 入口分派，qa 分支零改动保住 97.7%）
+- [x] **SSE 新增 `intent` 事件**（最早下发，供前端展示当前意图）
+- [ ] **compound 复合请求拆解**（第二步：把"带孩子去厕所路上讲故事"拆成子任务串行执行）
 
-- [ ] **意图分类器**（`backend/agent/orchestrator.py`）
-  - 输入：用户原始消息
-  - 分类：`qa`问答 / `navigation`路线规划 / `empathy`情感安抚 / `recommend`个性推荐 / `compound`复合
-  - 实现：轻量 LLM 调用（qwen-turbo，<200ms）或规则+关键词快速判断
+### 创新二：同行人格切换（已完成，待 commit）
 
-- [ ] **路线规划 Agent**（`backend/agent/navigation_agent.py`）
-  - 输入：游客位置（可选）+ 偏好（时间/体力/同行类型）
-  - 输出：个性化游览路线 + 景点串联讲解
-  - 数据：6条灵山路线已在知识库，其他景区补充
+- [x] **`group_type` 参数**（ChatRequest，默认 `adult`）
+  - `adult` / `family_kids` / `senior` / `couple`
+- [x] **叙事人格指令**（`backend/llm/prompts.py` `_build_persona_directive`）
+  - 亲子：讲故事+互动提问+亲子设施；老年：慢节奏+无障碍+休息点；情侣：浪漫+机位+祈福
+  - 缓存键升级 `group_type::lang::query`，隔离不同人格
+- [ ] **同步到 API_DOC.md**（`/chat` 补充 `group_type` + `intent` 字段说明）
 
-- [ ] **共情安抚 Agent**（`backend/agent/empathy_agent.py`）
-  - 触发：用户情绪负面/抱怨/求助类消息
-  - 输出：优先安抚 + 转接人工提示（可选）
-
-- [ ] **Orchestrator 接入 `/chat` 主链路**
-  - 在 `pipeline.py` `answer()` 入口加意图判断
-  - 复合请求：串行编排多个 Agent，结果拼合后统一回复
-  - 兜底：意图不明时走原有 RAG 问答
-
-### 创新二：同行人格切换（中优先级）
-
-- [ ] **`group_type` 参数加入 ChatRequest**
-  - 可选值：`adult`通用成人 / `family_kids`亲子家庭 / `senior`老年团 / `couple`情侣
-  - 默认 `adult`
-
-- [ ] **叙事风格 prompt 模板**（`backend/llm/prompts.py`）
-  - `family_kids`：讲故事、拟人化、互动提问（"小朋友知道吗？"）
-  - `senior`：放慢节奏、强调无障碍设施、休息点提示
-  - `couple`：浪漫视角、摄影机位推荐、打卡点
-
-- [ ] **同步到 API_DOC.md**（`/chat` 请求字段补充 `group_type` 说明）
+> 设计思路详见 `docs/多智能体与人格切换设计.md`（答辩/总体设计文档用）
 
 ### 创新三：视觉辅助定位（简化版，加分项）
 

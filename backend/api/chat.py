@@ -17,6 +17,7 @@ class ChatRequest(BaseModel):
     stream: bool = False
     fast: bool = False      # True → qwen-turbo，首 token 更快
     lang: str = "auto"      # auto=跟随提问语言；或 en/ja/ko/fr… 强制指定
+    group_type: str = "adult"  # 同行关系，切换叙事人格：adult/family_kids/senior/couple
 
 
 class ChatResponse(BaseModel):
@@ -58,7 +59,8 @@ async def chat_endpoint(req: ChatRequest):
               es.addEventListener('end',      e => es.close())
             """
             async for event in answer_stream(
-                req.message, req.scenic_id, req.history, req.session_id, req.fast, req.lang
+                req.message, req.scenic_id, req.history, req.session_id,
+                req.fast, req.lang, req.group_type,
             ):
                 event_type = event["type"]
                 data = json.dumps(event, ensure_ascii=False)
@@ -70,5 +72,8 @@ async def chat_endpoint(req: ChatRequest):
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    result = answer(req.message, req.scenic_id, req.history, req.session_id, req.fast, req.lang)
+    result = answer(
+        req.message, req.scenic_id, req.history, req.session_id,
+        req.fast, req.lang, req.group_type,
+    )
     return ChatResponse(**result)

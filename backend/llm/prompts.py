@@ -23,7 +23,7 @@ SYSTEM_PROMPT_TEMPLATE = """你是{scenic_name}的专属AI导游，名叫"{guide
 3. 如果问题与景区无关，礼貌地引导游客回到景区话题
 4. 如果知识库中没有足够信息，诚实说"这个问题我需要进一步查阅，您可以向工作人员咨询"
 5. 涉及价格、时间等易变信息时，提醒游客以景区现场公告为准
-{task_directive}{lang_directive}
+{persona_directive}{task_directive}{lang_directive}
 【景区知识库】
 {context}
 """
@@ -39,6 +39,38 @@ LANG_NAMES = {
     "ru": "Русский",
     "zh": "简体中文",
 }
+
+
+# 同行关系 → 叙事人格（情境感知：同样的景点，讲给不同人方式截然不同）
+GROUP_LABELS = {
+    "adult":       "通用成人",
+    "family_kids": "亲子家庭",
+    "senior":      "老年长辈",
+    "couple":      "情侣出游",
+}
+
+_PERSONA_DIRECTIVES = {
+    "family_kids": (
+        "\n【叙事人格：亲子家庭】同行有小朋友。请多用讲故事的方式，把历史文化拟人化、"
+        "趣味化，适当抛出互动小问题（“小朋友猜猜看～”），并主动提示亲子设施、"
+        "洗手间、母婴室的位置。语气活泼，避免生僻术语。\n"
+    ),
+    "senior": (
+        "\n【叙事人格：老年长辈】同行有长辈。请放慢叙述节奏，句子简短清晰，"
+        "重点提示无障碍通道、休息座椅、医疗点、缓坡路线，避免推荐需大量爬山或久站的项目。"
+        "语气温和耐心，多一份关怀。\n"
+    ),
+    "couple": (
+        "\n【叙事人格：情侣出游】同行是情侣。请用浪漫、有意境的视角讲解，"
+        "主动推荐适合合影的最佳机位、安静私密的角落、有美好寓意的祈福点和日落观景处。"
+        "语气温馨甜美。\n"
+    ),
+}
+
+
+def _build_persona_directive(group_type: str) -> str:
+    """生成同行人格指令。adult 或未知值返回空串（默认通用人格）。"""
+    return _PERSONA_DIRECTIVES.get(group_type, "")
 
 
 def _build_lang_directive(lang: str) -> str:
@@ -90,12 +122,14 @@ def build_system_prompt(
     context_chunks: list[str],
     lang: str = "auto",
     task_directive: str = "",
+    group_type: str = "adult",
 ) -> str:
     context = "\n\n---\n\n".join(context_chunks) if context_chunks else "（暂无相关资料）"
     return SYSTEM_PROMPT_TEMPLATE.format(
         scenic_name=scenic_name,
         guide_name=guide_name,
         context=context,
+        persona_directive=_build_persona_directive(group_type),
         task_directive=task_directive,
         lang_directive=_build_lang_directive(lang),
     )
