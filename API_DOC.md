@@ -14,6 +14,7 @@
   - [1.2 文本对话（流式 SSE）](#12-文本对话流式-sse)
   - [1.3 图片对话（多模态）](#13-图片对话多模态)
   - [1.4 多语言问答](#14-多语言问答)
+  - [1.5 同行人格切换](#15-同行人格切换)
 - [2. 知识库管理](#2-知识库管理)
 - [3. 数据分析（管理后台用）](#3-数据分析管理后台用)
 - [4. 数字人形象配置](#4-数字人形象配置)
@@ -43,6 +44,7 @@ Content-Type: application/json
 | `history` | array | | 历史对话，格式见下，默认空 |
 | `fast` | bool | | `true` 用 qwen-turbo（延迟减半，适合简单问答），默认 `false` |
 | `lang` | string | | 回答语言，`auto`（跟随提问语言）或 `en`/`ja`/`ko`… 强制指定，默认 `auto`，详见 1.4 节 |
+| `group_type` | string | | 同行关系，切换叙事人格，默认 `adult`，详见 1.5 节 |
 | `stream` | bool | | 必须为 `false`（或不填），流式用 1.2 节 |
 
 **景区 ID 枚举**
@@ -84,6 +86,7 @@ curl -X POST http://116.62.136.211:8000/chat \
   "emotion": "excited",
   "sources": ["灵山胜境 景点结构化数据集"],
   "context_used": true,
+  "intent": "qa",
   "from_cache": false
 }
 ```
@@ -94,6 +97,7 @@ curl -X POST http://116.62.136.211:8000/chat \
 | `emotion` | 情绪键，见[情绪枚举](#情绪-emotion-枚举) |
 | `sources` | 命中的知识库文档名（用于调试） |
 | `context_used` | 是否检索到相关知识库内容 |
+| `intent` | 意图分派结果，见[意图枚举](#意图-intent-枚举)（Orchestrator 判定） |
 | `from_cache` | 是否命中 LRU 缓存（<5ms 返回） |
 
 ---
@@ -101,7 +105,7 @@ curl -X POST http://116.62.136.211:8000/chat \
 ### 1.2 文本对话（流式 SSE）
 
 > **队友 A（重点）**：这是驱动数字人的主接口。  
-> 第一个事件是 `emotion`，在 LLM 输出第一个字前就下发，数字人可以**立刻**设置表情。  
+> 第一个事件是 `intent`（意图，LLM 调用前即下发），紧接着 `emotion`（在 LLM 输出第一个字前下发），数字人可以**立刻**设置表情。  
 > `sentence` 事件每完成一个自然句就下发一次，**收到即可送 TTS**，无需等待全文。
 
 ```
@@ -116,6 +120,9 @@ Content-Type: application/json
 事件流结构：
 
 ```
+event: intent
+data: {"type":"intent","value":"qa","label":"知识问答"}
+
 event: emotion
 data: {"type":"emotion","value":"excited"}
 
@@ -136,9 +143,12 @@ data: {"type":"end","full_text":"[情绪:兴奋]\n\n哇，灵山大佛……"}
 
 | `event` | 数据字段 | 时机 | 用途 |
 |---|---|---|---|
-| `emotion` | `value: string` | **最先到达**，LLM 输出第一个 token 后 | 设置数字人面部表情 |
+| `intent` | `value: string`，`label: string` | **最先到达**，LLM 调用前 | 展示当前意图（可选，可忽略） |
+| `emotion` | `value: string` | LLM 输出第一个 token 后 | 设置数字人面部表情 |
 | `sentence` | `text: string`，`index: number` | 每完成一个自然句 | 送 TTS 合成语音 |
 | `end` | `full_text: string` | 全部完成 | 关闭连接，记录日志 |
+
+> 事件顺序：**intent → emotion → sentence… → end**。`intent` 为新增事件，老客户端忽略即可，向后兼容。
 
 **JavaScript 接入示例（队友 A / B 均适用）**
 
@@ -175,6 +185,7 @@ async function chatStream(message, scenicId, sessionId, onEmotion, onSentence, o
         currentEvent = line.slice(7).trim();
       } else if (line.startsWith('data: ')) {
         const data = JSON.parse(line.slice(6));
+        if (currentEvent === 'intent')   onIntent?.(data.label);    // 可选，展示当前意图
         if (currentEvent === 'emotion')  onEmotion(data.value);
         if (currentEvent === 'sentence') onSentence(data.text, data.index);
         if (currentEvent === 'end')      onEnd(data.full_text);
@@ -320,6 +331,33 @@ curl -X POST http://116.62.136.211:8000/chat \
 ```
 
 > **队友 A 注意**：`emotion` 事件值始终是固定的英文键（`happy`/`excited`…），不随回答语言变化，数字人表情控制逻辑无需改动。
+
+---
+
+### 1.5 同行人格切换
+
+> 情境感知能力：同一段讲解，讲给带娃家庭、老人、情侣方式截然不同。通过 `/chat` 的 `group_type` 参数切换叙事人格，接口其余字段不变。
+
+**取值**
+
+| `group_type` | 同行关系 | 叙事风格 |
+|---|---|---|
+| `adult`（默认） | 通用成人 | 标准热情导游 |
+| `family_kids` | 亲子家庭 | 讲故事、互动提问（“小朋友猜猜看～”）、提示亲子设施 |
+| `senior` | 老年长辈 | 放慢节奏、强调无障碍/休息点、避免推荐爬山久站 |
+| `couple` | 情侣出游 | 浪漫视角、推荐合影机位与祈福点 |
+
+**请求示例**
+
+```bash
+# 亲子家庭模式
+curl -X POST http://116.62.136.211:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"灵山有什么好玩的","scenic_id":"lingshan","group_type":"family_kids"}'
+```
+
+> **队友 B**：可在游客端开场用一次性选择（"和谁一起来？"）设置 `group_type`，后续请求带上即可。
+> `group_type` 与 `lang`、`fast`、`stream` 可任意组合。
 
 ---
 
@@ -666,6 +704,18 @@ GET /digital-human/config/all
 | `empathetic` | 关切 | 游客困惑或遇到问题时 |
 | `apologetic` | 抱歉 | 知识库无相关信息时 |
 
+### 意图 `intent` 枚举
+
+由 Orchestrator（调度中枢）对每轮提问判定，决定走哪条处理逻辑。
+
+| 值 | 中文含义 | 触发场景 |
+|---|---|---|
+| `qa` | 知识问答 | 询问历史/文化/数据等（默认，走 RAG） |
+| `navigation` | 路线规划 | 询问游览路线、顺序、行程安排 |
+| `recommend` | 个性推荐 | 寻求推荐（值得去的、适合的、拍照点） |
+| `empathy` | 情感安抚 | 表达负面情绪、抱怨、求助 |
+| `chitchat` | 闲聊互动 | 与景点无关的闲聊、问候（跳过 RAG） |
+
 ### 错误响应格式
 
 ```json
@@ -694,4 +744,4 @@ GET /digital-human/config/all
 
 ---
 
-*文档版本：v0.4 | 更新日期：2026-05-24*
+*文档版本：v0.5 | 更新日期：2026-05-26*
