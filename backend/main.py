@@ -72,3 +72,10 @@ def mobile_ui():
     """移动优先的后端功能测试台（手机浏览器访问 /m）。"""
     p = Path(__file__).resolve().parent.parent / "test_mobile.html"
     return FileResponse(p, media_type="text/html")
+
+
+@app.get("/talk", include_in_schema=False)
+def talk_ui():
+    """数字人交互页（WebRTC 数字人 + 问答走桥接 → 端到端语音问答演示）。"""
+    p = Path(__file__).resolve().parent.parent / "talk.html"
+    return FileResponse(p, media_type="text/html")

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>灵境·导览 — 数字人</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;}
+  body{font-family:-apple-system,"PingFang SC",sans-serif;background:#0b1020;color:#e2e8f0;
+       min-height:100vh;display:flex;flex-direction:column;}
+  header{padding:10px 14px;background:#111a33;display:flex;align-items:center;gap:10px;}
+  header b{font-size:15px;}
+  header select{margin-left:auto;background:#1e293b;color:#e2e8f0;border:none;padding:6px 8px;border-radius:6px;font-size:13px;}
+  .stage{position:relative;background:#000;width:100%;aspect-ratio:9/16;max-height:62vh;overflow:hidden;}
+  .stage video{width:100%;height:100%;object-fit:cover;background:#000;}
+  .badge{position:absolute;top:10px;left:10px;font-size:11px;padding:3px 9px;border-radius:20px;background:rgba(0,0,0,.55);}
+  .badge.on{background:rgba(22,163,74,.85);} .badge.off{background:rgba(220,38,38,.8);}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
+  .overlay button{background:#2563eb;color:#fff;border:none;padding:14px 26px;border-radius:30px;font-size:16px;font-weight:700;}
+  .pills{position:absolute;bottom:8px;left:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap;}
+  .pill{font-size:11px;padding:3px 9px;border-radius:20px;background:rgba(37,99,235,.85);}
+  .pill.emo{background:rgba(245,158,11,.85);} .pill.tm{background:rgba(15,23,42,.85);}
+  .panel{flex:1;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .reply{background:#111a33;border-radius:10px;padding:12px;font-size:15px;line-height:1.6;min-height:60px;
+         white-space:pre-wrap;word-break:break-word;}
+  .ask{display:flex;gap:8px;}
+  .ask input{flex:1;padding:12px;border:1px solid #243049;border-radius:10px;background:#0f1730;color:#e2e8f0;font-size:15px;}
+  .ask button{background:#2563eb;color:#fff;border:none;padding:0 18px;border-radius:10px;font-size:15px;font-weight:600;}
+  .ask button:disabled{opacity:.4;}
+  .hint{font-size:12px;color:#64748b;text-align:center;}
+</style>
+</head>
+<body>
+<header>
+  <b>🏯 灵境·导览</b>
+  <select id="scenic">
+    <option value="lingshan">灵山胜境</option>
+    <option value="nihuawan">拈花湾</option>
+    <option value="xihu">西湖</option>
+    <option value="huangshan">黄山</option>
+    <option value="gugong">故宫</option>
+  </select>
+</header>
+
+<div class="stage">
+  <video id="video" autoplay playsinline></video>
+  <audio id="audio" autoplay></audio>
+  <span class="badge off" id="badge">未连接</span>
+  <div class="overlay" id="overlay"><button onclick="connect()">▶ 连接数字人</button></div>
+  <div class="pills" id="pills"></div>
+</div>
+
+<div class="panel">
+  <div class="reply" id="reply">连接数字人后，在下方提问，TA 会开口回答。</div>
+  <div class="ask">
+    <input id="msg" placeholder="问点什么，如：灵山大佛有多高？" onkeydown="if(event.key==='Enter')ask()">
+    <button id="send" onclick="ask()" disabled>问</button>
+  </div>
+  <div class="hint" id="hint"></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const HOST=location.hostname;
+const LT='http://'+HOST+':8010';      // LiveTalking
+const BR='http://'+HOST+':9000';      // 桥接层
+let pc=null, sessionid=null;
+
+// ── WebRTC 建连（参照 LiveTalking client.js）──────────────
+async function connect(){
+  $('overlay').style.display='none'; setBadge('连接中…','');
+  pc=new RTCPeerConnection({sdpSemantics:'unified-plan'});
+  pc.addEventListener('track',e=>{
+    if(e.track.kind==='video') $('video').srcObject=e.streams[0];
+    else $('audio').srcObject=e.streams[0];
+  });
+  pc.addTransceiver('video',{direction:'recvonly'});
+  pc.addTransceiver('audio',{direction:'recvonly'});
+  try{
+    const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
+    await new Promise(res=>{ if(pc.iceGatheringState==='complete')return res();
+      const ck=()=>{ if(pc.iceGatheringState==='complete'){pc.removeEventListener('icegatheringstatechange',ck);res();} };
+      pc.addEventListener('icegatheringstatechange',ck); });
+    const r=await fetch(LT+'/offer',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sdp:pc.localDescription.sdp,type:pc.localDescription.type})});
+    const ans=await r.json(); sessionid=ans.sessionid;
+    await pc.setRemoteDescription(ans);
+    setBadge('已连接 ●','on'); $('send').disabled=false;
+    $('hint').textContent='会话 '+sessionid;
+  }catch(e){ setBadge('连接失败','off'); $('overlay').style.display='flex'; $('reply').textContent='连接失败：'+e.message; }
+}
+function setBadge(t,c){ const b=$('badge'); b.textContent=t; b.className='badge '+(c||''); }
+
+// ── 提问 → 桥接 /live/ask → 数字人逐句开口 ──────────────
+async function ask(){
+  if(!sessionid){ alert('请先连接数字人'); return; }
+  const msg=$('msg').value.trim(); if(!msg) return;
+  $('send').disabled=true; $('pills').innerHTML=''; $('reply').textContent='思考中…';
+  const t0=Date.now();
+  try{
+    const r=await fetch(BR+'/live/ask',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sessionid,message:msg,scenic_id:$('scenic').value})});
+    const d=await r.json();
+    if(!r.ok){ $('reply').textContent='出错：'+(d.detail||r.status); return; }
+    const dt=((Date.now()-t0)/1000).toFixed(1);
+    $('reply').textContent=d.reply||'(无回答)';
+    $('pills').innerHTML=`<span class="pill">意图 ${d.intent||'-'}</span>`
+      +`<span class="pill emo">情绪 ${d.emotion||'-'}</span>`
+      +`<span class="pill tm">⏱ ${dt}s</span>`;
+    $('msg').value='';
+  }catch(e){ $('reply').textContent='请求失败：'+e.message; }
+  finally{ $('send').disabled=false; }
+}
+</script>
+</body>
+</html>

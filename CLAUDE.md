@@ -307,9 +307,12 @@ open http://116.62.136.211:8000/docs
 - [x] **桥接层 `bridge/server.py`**（本地 :9000）：`/live/ask` 串 RAG→数字人、`/live/avatar` 切形象、`/live/health`（RAG 半边已联调通过）
 - [x] **桥接层流式改造**：`/live/ask` 改为订阅 RAG 句子级 SSE 流，每出一句立即驱动数字人（首句 ~0.8s 即开口，不等整段），实测正确解析 5 句、逐句驱动逻辑就绪
 - [x] **本地自研 ASR**（`POST /asr`，`backend/asr/transcriber.py`）：faster-whisper small + CPU int8（0 显存，把 4080 整块留给数字人）；自研改造点=景区术语热词增强 + VAD + 中文空格后处理；实测 ~1.1s/句、生僻专名"九龙灌浴"准确识别。模型懒加载，ECS 无依赖也不崩
+- [x] **SSE 伪流式修复（重要）**：`_raw_token_stream` 用同步 DashScope generator 在 async 里迭代，阻塞 asyncio 事件循环，使 FastAPI 整段才 flush SSE（伪流式，连带让桥接「首句抢跑」失效）；改为同步迭代放线程 + `asyncio.Queue` 异步交回 token。实测首句 8.27s→2.58s，逐句真流式（commit 88e4660）
+- [x] **移动测试前端**（`GET /m` → `test_mobile.html`）：移动优先，覆盖 chat(流式逐字+计时)/asr/拍照/形象配置/大屏/知识库；流式用 XHR `onprogress` 增量解析（兼容微信等移动浏览器，优于 fetch streaming）
+- [x] **数字人交互页**（`GET /talk` → `talk.html`，⚠️待 commit）：WebRTC 显示数字人 + 问答走桥接 `/live/ask`，地址按访问 hostname 自动推断；游客端端到端页面
 
 ### 联调 & 交付材料
-- [ ] LiveTalking 端到端联调：生成古风 avatar → 启动本机全栈 → 手机 H5 验证（任务 #5-#9）
+- [~] LiveTalking 端到端联调：**本地四服务已跑通**（LiveTalking:8010 + RAG cloud 模式:8000(0显存) + 桥接:9000 + 交互页 /talk），`/live/health` 三服务在线；avatar 暂用样例 sun.mp4。**待手机真机验证**「问→数字人开口」<5s（任务 #9；古风形象 #5-7 后换）
 - [ ] 把占位 avatar/voice ID 接到真实资源，验证后台改 config 能真切形象/音色
 - [ ] 端到端延迟实测（目标 < 5 秒）
 - [ ] 部署和使用手册
@@ -357,6 +360,26 @@ LiveTalking 本地零成本、WebRTC 流任意浏览器（含手机/微信 H5）
 - 读 `digital-human/config`，把占位 `avatar_id`/`voice_id` 翻译成真实 MuseTalk avatar + edge-TTS 音色（代码内 `VOICE_MAP`/`AVATAR_MAP`，生成新形象后改这两张表）
 - avatar 是「连接级」参数（`/offer` 时定），voice 是「消息级」（`/human` 的 `tts.ref_file`）
 - 启动：`RAG_BASE=http://localhost:8000 LIVETALKING_BASE=http://localhost:8010 .venv/bin/uvicorn bridge.server:app --host 0.0.0.0 --port 9000`
+
+### 本地全栈启动顺序（开发/演示，已跑通）
+
+> 关键：RAG 用 **`DEPLOY_MODE=cloud`**（DashScope embedding，0 显存），把 4080 整块显存留给数字人；
+> ASR 走 CPU（0 显存）。三者 + 数字人共存于一张 4080。**全程不需要 ECS。**
+
+```bash
+# ① 数字人（占 GPU ~10.9G）
+cd ~/Desktop/LiveTalking && unset ALL_PROXY all_proxy HTTP_PROXY http_proxy HTTPS_PROXY https_proxy
+~/miniconda3/envs/livetalking/bin/python app.py --transport webrtc --model musetalk --avatar_id musetalk_avatar1
+# ② RAG 后端（cloud 模式，0 显存，0.0.0.0 让手机可访问）
+cd ~/Desktop/Digital_Person && DEPLOY_MODE=cloud .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+# ③ 桥接层
+cd ~/Desktop/Digital_Person && RAG_BASE=http://localhost:8000 LIVETALKING_BASE=http://localhost:8010 \
+  .venv/bin/uvicorn bridge.server:app --host 0.0.0.0 --port 9000
+```
+
+手机同 WiFi 访问（本机 IP 用 `hostname -I` 查）：
+- `http://<本机IP>:8000/talk` — 数字人交互页（连接 → 提问 → 看 TA 开口）
+- `http://<本机IP>:8000/m` — 后端功能测试台
 
 ### 已排除方案
 
