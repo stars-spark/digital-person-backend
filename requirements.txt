@@ -17,5 +17,9 @@ pydantic>=2.7.0
 pydantic-settings>=2.3.0
 python-multipart>=0.0.9
 
+# ASR（本地语音识别，faster-whisper CPU int8；ECS 无 GPU 不跑，故不进 requirements.cloud.txt）
+faster-whisper>=1.1.0
+edge-tts>=7.0.0          # 兼作 ASR 闭环测试音频生成
+
 # 工具
 python-dotenv>=1.0.0

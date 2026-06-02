@@ -1,5 +1,5 @@
 """
-多模态聊天接口：游客上传图片提问，用 qwen-vl-max-latest 回答。
+多模态聊天接口：游客上传图片提问，用 qwen-vl-max 回答。
 """
 
 from fastapi import APIRouter, HTTPException
@@ -23,7 +23,7 @@ class ImageChatRequest(BaseModel):
 class ImageChatResponse(BaseModel):
     reply: str
     emotion: str
-    model_used: str = "qwen-vl-max-latest"
+    model_used: str = "qwen-vl-max"
 
 
 @router.post("/image", response_model=ImageChatResponse)

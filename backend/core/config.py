@@ -7,8 +7,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 class Settings(BaseSettings):
     # DashScope (通义千问)
     dashscope_api_key: str = ""
-    llm_model: str = "qwen-max-latest"
-    vl_model: str = "qwen-vl-max-latest"
+    llm_model: str = "qwen-max"
+    vl_model: str = "qwen-vl-max"
 
     # 部署模式：local（本地GPU）或 cloud（阿里云，用DashScope Embedding）
     deploy_mode: str = "local"
@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     # 本地模型（deploy_mode=local 时使用）
     embedding_model: str = "BAAI/bge-m3"
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
+
+    # ASR（本地 faster-whisper；CPU 运行不抢数字人显存）
+    asr_model: str = "small"        # 实测 small CPU ~1.1s 达标；medium 在本机 RTF≈2 太慢
+    asr_device: str = "cpu"         # cpu：0 显存占用，把 4080 整块显存留给数字人(MuseTalk)
+    asr_compute: str = "int8"       # int8：CPU 上最快
+    asr_cpu_threads: int = 4        # 实测本机 4 线程最快（大小核架构，过多线程反增调度开销）
+    asr_beam_size: int = 1          # 贪心解码；短问答足够，比 beam=5 快约 30%
 
     # RAG 参数
     chunk_size: int = 512

@@ -84,15 +84,15 @@ Prompt Engineering
 
 | 模块 | 选型 | 说明 |
 |---|---|---|
-| **文本 LLM** | `qwen-max-latest`（DashScope） | 中文理解最强国产商业模型 |
-| **多模态 LLM** | `qwen-vl-max-latest`（DashScope） | 满足赛题多模态硬性要求；图文问答 |
+| **文本 LLM** | `qwen-max`（DashScope） | 中文理解最强国产商业模型。⚠️ 当前 key 对所有 `-latest` 滚动版无访问权限（403 AccessDenied），必须用稳定版 |
+| **多模态 LLM** | `qwen-vl-max`（DashScope） | 满足赛题多模态硬性要求；图文问答。同样禁用 `-latest`，用稳定版 |
 | **向量嵌入** | `BAAI/bge-m3`（本地，4080运行） | 中英双语，检索质量高，无API费用 |
 | **重排序** | `BAAI/bge-reranker-v2-m3`（本地） | 提升召回精度，是90%准确率的关键 |
 | **向量数据库** | ChromaDB（本地） | 多 collection 实现景区命名空间隔离 |
 | **稀疏检索** | rank_bm25 | 与稠密检索混合，覆盖关键词精确匹配 |
-| **语音识别** | faster-whisper large-v3（本地） | 4080可实时推理，中文准确率高 |
+| **语音识别** | faster-whisper **small**（本地 CPU int8） | ⚠️ large-v3 与数字人争显存装不下 → 改 small 跑 CPU：0 显存、~1.1s/句；自研景区术语热词增强 |
 | **语音合成** | CosyVoice2（本地） | 音色自然，可克隆景区专属声音 |
-| **数字人驱动** | SadTalker / MuseTalk（本地） | 4080 12GB可流畅运行 |
+| **数字人驱动** | **LiveTalking + MuseTalk V1.5**（本地4080） | 实时 WebRTC 流，30fps 口型同步；`/human` 外部文字驱动接入 RAG。已在 4080 跑通 demo |
 | **后端框架** | FastAPI（Python） | 用户已有基础 |
 | **前端框架** | React + Ant Design + ECharts | 数据大屏用ECharts |
 | **数据库** | SQLite（会话/分析） + ChromaDB（向量） | 初赛阶段足够 |
@@ -102,7 +102,7 @@ Prompt Engineering
 - 设备：ROG 幻16
 - GPU：RTX 4080 Laptop，11.6GB 显存
 - 驱动：580.159.03，CUDA 13.0
-- 本地可运行：BGE-M3、BGE-Reranker、faster-whisper large-v3、CosyVoice2、SadTalker
+- 本地可运行：BGE-M3、BGE-Reranker、faster-whisper large-v3、CosyVoice2、LiveTalking+MuseTalk（约 10.9GB 显存）
 
 ---
 
@@ -243,7 +243,7 @@ open http://116.62.136.211:8000/docs
 
 | 赛题要求 | 实现状态 | 说明 |
 |---|---|---|
-| 语音输入 | 🔜 队友A | faster-whisper，接口已预留 |
+| 语音输入 | ✅ | 本地自研 ASR `POST /asr`（faster-whisper small CPU int8 + 景区热词，~1.1s/句） |
 | 文本输入 | ✅ | `POST /chat` |
 | 数字人语音/表情/口型同步回答 | 🔜 队友A/B | TTS+SadTalker，后端 SSE 事件已就绪 |
 | 智能问答（历史/文化/景点特色） | ✅ | RAG，准确率 97.7% |
@@ -257,7 +257,7 @@ open http://116.62.136.211:8000/docs
 
 | 赛题要求 | 实现状态 | 实测数据 |
 |---|---|---|
-| ≥1个多模态大模型 | ✅ | qwen-vl-max-latest（`POST /chat/image`） |
+| ≥1个多模态大模型 | ✅ | qwen-vl-max（`POST /chat/image`） |
 | 问答准确率 ≥ 90% | ✅ | 97.7%（44题，5景区） |
 | 语音问答延迟 < 5秒 | 🔜 联调中 | 后端首句 ~2s，TTS+渲染待测 |
 | 系统不崩溃/长时无响应 | ✅ | systemd 托管，ECS 云端常驻 |
@@ -293,7 +293,7 @@ open http://116.62.136.211:8000/docs
 
 ### 接口层
 - [x] `POST /chat`（同步 + SSE 流式，含 emotion/sentence/end 事件）
-- [x] `POST /chat/image`（qwen-vl-max-latest 多模态）
+- [x] `POST /chat/image`（qwen-vl-max 多模态）
 - [x] `POST /kb/upload` / `GET /kb/list` / `DELETE /kb/{id}`
 - [x] Analytics 全套（dashboard / hot-topics / sentiment-trend / conversations / report）
 - [x] SQLite 会话存储（session_id / emotion / created_at）
@@ -303,10 +303,14 @@ open http://116.62.136.211:8000/docs
 - [x] **知识盲区接口**（`GET /analytics/knowledge-gaps`，commit e9662b1）
 - [x] **负面情绪预警接口**（`GET /analytics/alerts`，commit 08d31ba）
 - [x] **多语言问答**（`lang` 参数，支持 auto/en/ja/ko/fr/de/es/ru/zh，commit e5877fc）
+- [x] **DashScope 模型修复**：`-latest` 滚动版全部 403 AccessDenied → 切稳定版 `qwen-max`/`qwen-vl-max`；LLM 调用加 `status_code` 防御（不再 NoneType 崩溃）
+- [x] **桥接层 `bridge/server.py`**（本地 :9000）：`/live/ask` 串 RAG→数字人、`/live/avatar` 切形象、`/live/health`（RAG 半边已联调通过）
+- [x] **桥接层流式改造**：`/live/ask` 改为订阅 RAG 句子级 SSE 流，每出一句立即驱动数字人（首句 ~0.8s 即开口，不等整段），实测正确解析 5 句、逐句驱动逻辑就绪
+- [x] **本地自研 ASR**（`POST /asr`，`backend/asr/transcriber.py`）：faster-whisper small + CPU int8（0 显存，把 4080 整块留给数字人）；自研改造点=景区术语热词增强 + VAD + 中文空格后处理；实测 ~1.1s/句、生僻专名"九龙灌浴"准确识别。模型懒加载，ECS 无依赖也不崩
 
 ### 联调 & 交付材料
-- [ ] 队友 A 对接：SSE 流式接口联调（emotion/sentence 事件驱动 TTS + 口型）
-- [ ] 队友 B 对接：前端调用 `/chat`、知识库管理页、数据大屏
+- [ ] LiveTalking 端到端联调：生成古风 avatar → 启动本机全栈 → 手机 H5 验证（任务 #5-#9）
+- [ ] 把占位 avatar/voice ID 接到真实资源，验证后台改 config 能真切形象/音色
 - [ ] 端到端延迟实测（目标 < 5 秒）
 - [ ] 部署和使用手册
 - [ ] **总体设计文档**（底稿已有：`新idea景区导览AI数字人.docx`，需补充实测数据）
@@ -315,45 +319,58 @@ open http://116.62.136.211:8000/docs
 
 ---
 
-## 数字人选型决策（2026-05-23 定稿）
+## 数字人选型决策（2026-06-01 定稿，取代 5-23 的阿里云方案）
 
-### 最终方案：阿里云数字人 API + 自研 RAG 后端
+### 最终方案：本地 LiveTalking + MuseTalk V1.5 + 自研 RAG 后端
+
+演示态架构（全栈本地，手机同 WiFi 访问；ECS 仅作公网 API 展示）：
 
 ```
-手机浏览器
-    ↑ WebRTC / H5 SDK（阿里云托管，商业级口型+表情）
-阿里云数字人服务
-    ↑ 外部文字驱动（自定义对话模式）
-我们的 FastAPI 后端（RAG + SSE，完整保留）
+手机浏览器 / 微信 H5
+    ↑ WebRTC（局域网）
+本地 4080 机器
+  ├─ LiveTalking :8010    MuseTalk 30fps 口型同步，WebRTC 推流
+  ├─ 桥接层 bridge :9000   串 RAG→数字人，读 config 切形象/音色
+  └─ RAG 后端 :8000        本地 GPU 模式，检索 0.54s（也可指向 ECS）
+
+ECS 116.62.136.211:8000   保留为「7×24 公网 API」，供评审自助测 /chat、/docs
 ```
 
-**选型理由**：赛题要求手机端运行 + 评审重点是视觉质量，商业 API 质量远超自建渲染；
-RAG 后端已是满分（97.7%），差距在视觉层，应把有限时间投在高回报点上。
+**形象方案：AI 生成写实古风导游**
+文生图生成写实古风导游肖像 → 图生视频做 5-10s 微动待机片段 → MuseTalk 生成 avatar。
+零真人出镜，可生成多套形象（古风女/男/不同景区）正好演示「形象管理」可配置。
+**关键技术事实**：MuseTalk 只重生成嘴部、贴回原帧，∴ 自然度 ≈ 底座视频自然度 →
+底座必须写实真人风格，卡通/CG 反而暴露口型违和。
+
+**选型理由**：阿里云数字人「太贵」放弃；讯飞 Web SDK 仅 PC、不支持移动端浏览器（卡手机端要求）。
+LiveTalking 本地零成本、WebRTC 流任意浏览器（含手机/微信 H5）可播、`/human` 外部文字驱动直接接 RAG，
+单路演示不涉并发压力。视觉自然度由「写实底座 + MuseTalk」保证。
+
+### 桥接层（已完成，`bridge/server.py`，本地 :9000）
+
+| 端点 | 作用 |
+|---|---|
+| `POST /live/ask` | 游客问 → **订阅 RAG 句子级 SSE 流** → 每出一句立即 `/human`(echo) 驱动数字人开口（首句抢跑，压 <5s 延迟）；首句 `interrupt` 打断上轮、后续排队 |
+| `GET /live/avatar` | 建 WebRTC 连接前取该景区真实 avatar_id + 音色（实现形象切换） |
+| `GET /live/health` | 联调探活（RAG + LiveTalking 是否都在线） |
+
+- 读 `digital-human/config`，把占位 `avatar_id`/`voice_id` 翻译成真实 MuseTalk avatar + edge-TTS 音色（代码内 `VOICE_MAP`/`AVATAR_MAP`，生成新形象后改这两张表）
+- avatar 是「连接级」参数（`/offer` 时定），voice 是「消息级」（`/human` 的 `tts.ref_file`）
+- 启动：`RAG_BASE=http://localhost:8000 LIVETALKING_BASE=http://localhost:8010 .venv/bin/uvicorn bridge.server:app --host 0.0.0.0 --port 9000`
 
 ### 已排除方案
 
 | 方案 | 排除原因 |
 |---|---|
-| MuseTalk / SadTalker | 需要 GPU，手机端无法本地运行；SadTalker 每句 10-30s 超延迟红线 |
-| Three.js + VRM | 动漫风格不适合景区导游形象，视觉质量输给商业产品 |
-| 服务器渲染视频流到手机 | 并发压力大，WebRTC 搭建复杂，链路过长 |
+| 阿里云数字人 API | 商业计费太贵 |
+| 讯飞数字人 Web SDK | 仅 PC Web，不支持移动端浏览器，卡赛题手机端要求 |
+| SadTalker | 每句生成 10-30s，超 <5s 延迟红线 |
+| Three.js + VRM | 动漫风格不适合景区导游，自然度输给写实方案 |
 
-**备选**：如阿里云不支持外部 LLM 接入，改用**讯飞数字人**（H5 SDK，支持文字驱动）。
+### 分工（一人全栈）
 
-### 分工变化
-
-| 队友 | 职责调整 |
-|---|---|
-| **队友A** | 只需对接阿里云数字人 SDK + ASR（移除 MuseTalk/CosyVoice2 本地部署） |
-| **队友B** | 嵌入阿里云 H5 SDK + React 管理后台（不需要写 WebGL 渲染器） |
-| **我** | 补写 `POST /tts` 接口 + `GET/PUT /digital-human/config` 接口 |
-
-### 本周最高优先级
-
-验证阿里云数字人是否支持**外部文字驱动**（自定义对话模式）：
-1. 阿里云控制台 → 搜索"智能数字人" → 开通试用
-2. 找"自定义对话"或"第三方 LLM 接入"文档
-3. POST 一句文字，确认数字人能说出来 + 测延迟
+用户独自负责全栈：RAG 后端 + 桥接层 + LiveTalking 部署 + 形象生成 + 前端 + 交付材料。
+原「队友 A/B」分工作废，Claude Code 作为协作编程伙伴全程参与。
 
 ---
 
@@ -411,8 +428,8 @@ RAG 后端已是满分（97.7%），差距在视觉层，应把有限时间投�
 
 ## 最紧迫待办（按优先级）
 
-1. **验证阿里云数字人外部文字驱动**（未验证，决定整个视觉层路线）
-2. **实现多智能体 Orchestrator**（最大创新差异化，先做意图分类器）
-3. **实现同行人格切换**（`group_type` 参数，工作量小，体验差异大）
-4. **与队友A/B 同步**：队友B开始做前端管理后台 + 数字人配置页
-5. **总体设计文档**：补充实测数据后可直接提交
+1. **生成写实古风导游形象**（文生图 → 图生视频 → MuseTalk avatar），替换样例 sun.mp4
+2. **LiveTalking 端到端联调**：本机起 RAG+LiveTalking+桥接，手机 H5 验证「问答→数字人说话」<5s
+3. **接通形象配置**：占位 avatar/voice ID 映射到真实资源，验证后台改 config 能真切换
+4. **游客端前端 + 管理后台**（一人全栈自己做：问答交互页、知识库管理、数字人配置、数据大屏）
+5. **总体设计文档**：补充实测数据（97.7% 准确率、延迟、桥接架构图）后可提交

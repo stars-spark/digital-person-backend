@@ -1,5 +1,5 @@
 """
-多模态问答：qwen-vl-max-latest。
+多模态问答：qwen-vl-max。
 满足赛题"至少使用 1 个多模态大模型"的硬性要求。
 
 典型场景：
@@ -52,6 +52,10 @@ def answer_with_image(
         model=settings.vl_model,
         messages=messages,
     )
+    if response.status_code != 200 or response.output is None:
+        raise RuntimeError(
+            f"DashScope 多模态调用失败 [{response.status_code} {response.code}]: {response.message}"
+        )
     raw = response.output.choices[0].message.content[0]["text"]
     return extract_emotion(raw)
 

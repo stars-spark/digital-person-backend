@@ -65,6 +65,10 @@ def chat(
         temperature=0.7,
         max_tokens=1024,
     )
+    if response.status_code != 200 or response.output is None:
+        raise RuntimeError(
+            f"DashScope 调用失败 [{response.status_code} {response.code}]: {response.message}"
+        )
     return response.output.choices[0].message.content
 
 
@@ -89,6 +93,10 @@ async def _raw_token_stream(
         max_tokens=1024,
     )
     for resp in responses:
+        if resp.status_code != 200 or resp.output is None:
+            raise RuntimeError(
+                f"DashScope 流式失败 [{resp.status_code} {resp.code}]: {resp.message}"
+            )
         delta = resp.output.choices[0].message.content
         if delta:
             yield delta
