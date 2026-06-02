@@ -62,6 +62,13 @@ def health():
 
 @app.get("/test", include_in_schema=False)
 def test_ui():
-    """后端托管测试面板，避免 file:// 跨域问题。"""
+    """后端托管测试面板（PC 版），避免 file:// 跨域问题。"""
     p = Path(__file__).resolve().parent.parent / "test_ui.html"
+    return FileResponse(p, media_type="text/html")
+
+
+@app.get("/m", include_in_schema=False)
+def mobile_ui():
+    """移动优先的后端功能测试台（手机浏览器访问 /m）。"""
+    p = Path(__file__).resolve().parent.parent / "test_mobile.html"
     return FileResponse(p, media_type="text/html")

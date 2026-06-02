@@ -79,27 +79,54 @@ async def _raw_token_stream(
     fast: bool = False,
 ) -> AsyncGenerator[str, None]:
     """底层 token 流，供内部使用。"""
+    import asyncio
+    import threading
+
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
-    responses = Generation.call(
-        model=_get_model(fast),
-        messages=messages,
-        result_format="message",
-        stream=True,
-        incremental_output=True,
-        temperature=0.7,
-        max_tokens=1024,
-    )
-    for resp in responses:
-        if resp.status_code != 200 or resp.output is None:
-            raise RuntimeError(
-                f"DashScope 流式失败 [{resp.status_code} {resp.code}]: {resp.message}"
+    # DashScope 的流式是同步阻塞 generator；若直接在 async 里 for 迭代会卡住
+    # 事件循环，导致 FastAPI 无法逐块 flush SSE（表现为整段答案一次性到达）。
+    # 解决：同步迭代放到线程里跑，token 经 asyncio.Queue 异步交回，事件循环不被阻塞。
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def _produce():
+        try:
+            responses = Generation.call(
+                model=_get_model(fast),
+                messages=messages,
+                result_format="message",
+                stream=True,
+                incremental_output=True,
+                temperature=0.7,
+                max_tokens=1024,
             )
-        delta = resp.output.choices[0].message.content
-        if delta:
-            yield delta
+            for resp in responses:
+                if resp.status_code != 200 or resp.output is None:
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        ("error", f"DashScope 流式失败 [{resp.status_code} {resp.code}]: {resp.message}"),
+                    )
+                    return
+                delta = resp.output.choices[0].message.content
+                if delta:
+                    loop.call_soon_threadsafe(queue.put_nowait, ("token", delta))
+        except Exception as e:  # noqa: BLE001
+            loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, ("done", None))
+
+    threading.Thread(target=_produce, daemon=True).start()
+
+    while True:
+        kind, val = await queue.get()
+        if kind == "done":
+            break
+        if kind == "error":
+            raise RuntimeError(val)
+        yield val
 
 
 async def chat_stream(
