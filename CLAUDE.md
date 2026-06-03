@@ -309,11 +309,16 @@ open http://116.62.136.211:8000/docs
 - [x] **本地自研 ASR**（`POST /asr`，`backend/asr/transcriber.py`）：faster-whisper small + CPU int8（0 显存，把 4080 整块留给数字人）；自研改造点=景区术语热词增强 + VAD + 中文空格后处理；实测 ~1.1s/句、生僻专名"九龙灌浴"准确识别。模型懒加载，ECS 无依赖也不崩
 - [x] **SSE 伪流式修复（重要）**：`_raw_token_stream` 用同步 DashScope generator 在 async 里迭代，阻塞 asyncio 事件循环，使 FastAPI 整段才 flush SSE（伪流式，连带让桥接「首句抢跑」失效）；改为同步迭代放线程 + `asyncio.Queue` 异步交回 token。实测首句 8.27s→2.58s，逐句真流式（commit 88e4660）
 - [x] **移动测试前端**（`GET /m` → `test_mobile.html`）：移动优先，覆盖 chat(流式逐字+计时)/asr/拍照/形象配置/大屏/知识库；流式用 XHR `onprogress` 增量解析（兼容微信等移动浏览器，优于 fetch streaming）
-- [x] **数字人交互页**（`GET /talk` → `talk.html`，⚠️待 commit）：WebRTC 显示数字人 + 问答走桥接 `/live/ask`，地址按访问 hostname 自动推断；游客端端到端页面
+- [x] **数字人交互页**（`GET /talk` → `talk.html`）：显示数字人 + 问答走桥接 `/live/ask`，地址按访问 hostname 自动推断；游客端端到端页面
+- [x] **交互页改 RTMP→FLV + 修黑屏**：本机 aiortc 双轨 ICE 必失败→黑屏，改 LiveTalking `--transport rtmp` 推 SRS、mpegts.js 播 HTTP-FLV；SRS 无 CORS→画框转圈，桥接加 `/stream.flv` 反代借 CORS 同源播放，画面正常
+- [x] **MuseTalk OOM 修复（关键）**：默认 `batch_size=16` 在 11.6G 4080 Laptop 空闲占 11.3G、一说话 VAE decode 峰值 +512M 直接 CUDA OOM→推流死→转圈；降 `--batch_size 4` + `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`，空闲降 7.2G、留 4.6G 余量，实测 0 OOM
+- [x] **游客端语音输入 + VAD 自动断句**（`talk.html`）：点麦克风→Web Audio 实时 RMS 能量检测→说完静音 0.8s 自动停录→`/asr` 转写→自动发问；零依赖离线可用（对标 OpenAvatarChat 的 Silero-VAD 角色，能量版）。⚠️ getUserMedia 需 localhost/HTTPS，手机走 http 局域网 IP 会被禁麦
+- [x] **古风女导游形象生成**（任务 #5-7 完成）：`scripts/gen_avatar_asset.py` 用通义万相 文生图(wanx2.1-t2i-plus 竖版720x1280)→图生视频(wanx2.1-i2v-turbo 5s微动)→`genavatar.py` 烘成 MuseTalk avatar `guofeng_female`；素材在 `assets/avatar_src/guofeng_female/`。桥接 `AVATAR_MAP` 已把 `female_elegant/female_young`→`guofeng_female`
+- [x] **OpenAvatarChat 吸收方案**（`docs/OpenAvatarChat吸收方案.md`）：逐模块对照 + 落地排序（①模块化叙事 ②VAD✅ ③TTS换CosyVoice ④LiteAvatar暂缓）
 
 ### 联调 & 交付材料
-- [~] LiveTalking 端到端联调：**本地四服务已跑通**（LiveTalking:8010 + RAG cloud 模式:8000(0显存) + 桥接:9000 + 交互页 /talk），`/live/health` 三服务在线；avatar 暂用样例 sun.mp4。**待手机真机验证**「问→数字人开口」<5s（任务 #9；古风形象 #5-7 后换）
-- [ ] 把占位 avatar/voice ID 接到真实资源，验证后台改 config 能真切形象/音色
+- [~] LiveTalking 端到端联调：**本地全栈跑通**（LiveTalking RTMP:8010 + SRS docker + RAG cloud:8000(0显存) + 桥接:9000 + 交互页 /talk），黑屏/OOM 均已修。**待亲眼验证**古风导游开口 + 手机真机「问→开口」<5s（任务 #9，停在"加载中"未等到画面）
+- [ ] 把占位 avatar/voice ID 接到真实资源：avatar 已接（guofeng_female），voice 仍 edge-TTS 占位，待换 CosyVoice
 - [ ] 端到端延迟实测（目标 < 5 秒）
 - [ ] 部署和使用手册
 - [ ] **总体设计文档**（底稿已有：`新idea景区导览AI数字人.docx`，需补充实测数据）
@@ -361,25 +366,43 @@ LiveTalking 本地零成本、WebRTC 流任意浏览器（含手机/微信 H5）
 - avatar 是「连接级」参数（`/offer` 时定），voice 是「消息级」（`/human` 的 `tts.ref_file`）
 - 启动：`RAG_BASE=http://localhost:8000 LIVETALKING_BASE=http://localhost:8010 .venv/bin/uvicorn bridge.server:app --host 0.0.0.0 --port 9000`
 
-### 本地全栈启动顺序（开发/演示，已跑通）
+### 本地全栈启动顺序（开发/演示，已跑通 — RTMP 方案）
 
-> 关键：RAG 用 **`DEPLOY_MODE=cloud`**（DashScope embedding，0 显存），把 4080 整块显存留给数字人；
-> ASR 走 CPU（0 显存）。三者 + 数字人共存于一张 4080。**全程不需要 ECS。**
+> **传输方案：RTMP→FLV（不是 WebRTC）**。本机 aiortc 双轨（音+视频）ICE 必失败→数字人黑屏，
+> 单视频轨才通。故改走 LiveTalking `--transport rtmp` 推 SRS，浏览器用 mpegts.js 播 HTTP-FLV。
+>
+> **两个必须的关键参数（否则必崩）：**
+> 1. `--batch_size 4`：默认 16 在 11.6G 的 4080 Laptop 上，空闲就占 11.3G，一说话 MuseTalk
+>    VAE decode 峰值 +512M 直接 **CUDA OOM**→推流线程死→前端转圈。降到 4 后空闲仅 7.2G、
+>    留 4.6G 余量，说话不再爆（实测 0 OOM）。
+> 2. `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`：治显存碎片，辅助。
+>
+> RAG 用 **`DEPLOY_MODE=cloud`**（DashScope embedding，0 显存），ASR 走 CPU（0 显存），
+> 把 4080 整块留给数字人。**全程不需要 ECS。**
 
 ```bash
-# ① 数字人（占 GPU ~10.9G）
+# ① SRS 媒体服务器（docker，收 RTMP 转 HTTP-FLV；只需启一次，会常驻）
+docker start srs   # 端口 1935(RTMP) 1985(API) 8080(HTTP-FLV)
+
+# ② 数字人（RTMP 模式，batch4 防 OOM，推流到 SRS）
 cd ~/Desktop/LiveTalking && unset ALL_PROXY all_proxy HTTP_PROXY http_proxy HTTPS_PROXY https_proxy
-~/miniconda3/envs/livetalking/bin/python app.py --transport webrtc --model musetalk --avatar_id musetalk_avatar1
-# ② RAG 后端（cloud 模式，0 显存，0.0.0.0 让手机可访问）
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  ~/miniconda3/envs/livetalking/bin/python app.py --transport rtmp --model musetalk \
+  --avatar_id musetalk_avatar1 --batch_size 4 --push_url 'rtmp://localhost/live/livestream'
+
+# ③ RAG 后端（cloud 模式，0 显存，0.0.0.0 让手机可访问）
 cd ~/Desktop/Digital_Person && DEPLOY_MODE=cloud .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
-# ③ 桥接层
+# ④ 桥接层（含 /stream.flv 反代：借桥接 CORS 让前端同源播 FLV，绕开 SRS 无 CORS 头）
 cd ~/Desktop/Digital_Person && RAG_BASE=http://localhost:8000 LIVETALKING_BASE=http://localhost:8010 \
   .venv/bin/uvicorn bridge.server:app --host 0.0.0.0 --port 9000
 ```
 
-手机同 WiFi 访问（本机 IP 用 `hostname -I` 查）：
-- `http://<本机IP>:8000/talk` — 数字人交互页（连接 → 提问 → 看 TA 开口）
-- `http://<本机IP>:8000/m` — 后端功能测试台
+验证链路：`curl localhost:1985/api/v1/streams/`（看 `active:true`）、`curl localhost:9000/live/health`。
+
+访问（本机用 **localhost**；手机同 WiFi 用 `hostname -I` 查的 IP）：
+- `http://localhost:8000/talk` — 数字人交互页（连接 → 提问 → 看 TA 开口）
+- `http://localhost:8000/m` — 后端功能测试台
+- ⚠️ 本机浏览器**别用局域网 IP**：系统代理(clash :12334)会劫持局域网 IP→502。用 localhost 或给代理加「绕过局域网」。
 
 ### 已排除方案
 
@@ -451,8 +474,9 @@ cd ~/Desktop/Digital_Person && RAG_BASE=http://localhost:8000 LIVETALKING_BASE=h
 
 ## 最紧迫待办（按优先级）
 
-1. **生成写实古风导游形象**（文生图 → 图生视频 → MuseTalk avatar），替换样例 sun.mp4
-2. **LiveTalking 端到端联调**：本机起 RAG+LiveTalking+桥接，手机 H5 验证「问答→数字人说话」<5s
-3. **接通形象配置**：占位 avatar/voice ID 映射到真实资源，验证后台改 config 能真切换
-4. **游客端前端 + 管理后台**（一人全栈自己做：问答交互页、知识库管理、数字人配置、数据大屏）
-5. **总体设计文档**：补充实测数据（97.7% 准确率、延迟、桥接架构图）后可提交
+1. ✅ ~~生成写实古风导游形象~~（已完成：`guofeng_female`，通义万相生成 → 烘成 avatar）
+2. **亲眼验证古风导游开口**：重启全栈（SRS→数字人 batch4→RAG→桥接）→ `localhost:8000/talk` 连接提问，确认 guofeng_female 开口 + 延迟<5s（上次停在"加载中"未等到画面）
+3. **TTS 换 CosyVoice**（OpenAvatarChat 吸收 ③，走百炼 API 0 显存）：edge-TTS→CosyVoice 提自然度，命中赛题"自然度"红线
+4. **手机 H5 真机验证**：需解决 getUserMedia 麦克风的 HTTPS 问题（局域网 http 禁麦）
+5. **游客端前端 + 管理后台**（问答交互页✅、知识库管理、数字人配置、数据大屏）
+6. **总体设计文档**：补充实测数据（97.7% 准确率、延迟、桥接架构图、形象生成链路）后可提交

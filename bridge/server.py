@@ -27,10 +27,13 @@ import os
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 RAG_BASE = os.environ.get("RAG_BASE", "http://localhost:8000").rstrip("/")
 LIVETALKING_BASE = os.environ.get("LIVETALKING_BASE", "http://localhost:8010").rstrip("/")
+# SRS 的 HTTP-FLV 直播流地址（RTMP 模式下 LiveTalking 推到 SRS，浏览器从这里拉）
+SRS_FLV = os.environ.get("SRS_FLV", "http://localhost:8080/live/livestream.flv").rstrip("/")
 
 # ── 占位 ID → 真实资源的映射 ──────────────────────────────────────────
 # digital-human/config 里存的是业务占位 ID（female_elegant / voice_gentle_f…），
@@ -46,11 +49,11 @@ VOICE_MAP = {
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
 
 # avatar_id → 真实 LiveTalking avatar 目录名（data/avatars/<id>）
-# TODO: 古风导游 avatar 生成后，把对应项指到新的 avatar 目录名
+# 古风女导游 guofeng_female 由通义万相生成（scripts/gen_avatar_asset.py）→ genavatar 烘成。
 AVATAR_MAP = {
-    "female_elegant": "musetalk_avatar1",
-    "female_young":   "musetalk_avatar1",
-    "male_mature":    "musetalk_avatar1",
+    "female_elegant": "guofeng_female",   # 端庄优雅 → 古风女导游
+    "female_young":   "guofeng_female",
+    "male_mature":    "musetalk_avatar1",  # TODO: 生成古风男导游后改这里
     "male_young":     "musetalk_avatar1",
 }
 DEFAULT_AVATAR = "musetalk_avatar1"
@@ -192,6 +195,34 @@ async def live_ask(body: AskIn):
             "sentence_count": len(sentences),
             "drive_failures": drive_failures,
         }
+
+
+@app.get("/stream.flv")
+async def stream_flv():
+    """反代 SRS 的 HTTP-FLV 直播流。
+
+    为什么要反代：SRS 的 FLV 响应不带 Access-Control-Allow-Origin，
+    而交互页是从 :8000 (或别的源) 打开的，浏览器跨源拉 :8080 的流会被拦 → 画框转圈/黑屏。
+    桥接层(:9000)有 CORS allow *，前端改拉 :9000/stream.flv 即同源放行，绕开 SRS 无 CORS。
+    用 StreamingResponse 边收边吐，不缓冲整段（直播流是无限长的）。
+    """
+    client = httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(connect=5.0, read=None, write=10.0, pool=5.0))
+    req = client.build_request("GET", SRS_FLV)
+    upstream = await client.send(req, stream=True)
+    if upstream.status_code != 200:
+        await upstream.aclose()
+        await client.aclose()
+        raise HTTPException(status_code=502, detail=f"SRS 流不可用: HTTP {upstream.status_code}（确认 LiveTalking 正在推流、SRS 在跑）")
+
+    async def gen():
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    return StreamingResponse(gen(), media_type="video/x-flv")
 
 
 @app.get("/live/avatar")
