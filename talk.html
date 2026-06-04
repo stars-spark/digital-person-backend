@@ -95,6 +95,22 @@ function startPlay(){
   player.play().then(()=>{ $('video').muted=false; }).catch(()=>{});
   setBadge('已连接 ●','on'); $('send').disabled=false; $('mic').disabled=false; $('cam').disabled=false;
   $('hint').textContent='🎤 语音提问 · 📷 拍照定位讲解 · 或打字提问';
+  setTimeout(greet, 1500);   // 连上后稍候，让数字人主动开口迎宾
+}
+
+// ── 主动迎宾：连接成功后数字人微笑打招呼+自我介绍+邀请 ──────────
+let greeted=false;
+async function greet(){
+  if(greeted) return; greeted=true;
+  try{
+    const g=await (await fetch(`/trip/greeting?scenic_id=${$('scenic').value}&group_type=adult`)).json();
+    if(g.text){
+      $('reply').textContent=g.text;
+      $('pills').innerHTML='<span class="pill emo">主动迎宾</span>';
+      fetch(BR+'/live/say',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({sessionid,text:g.text,scenic_id:$('scenic').value})}).catch(()=>{});
+    }
+  }catch(e){/* 迎宾失败不影响主流程 */}
 }
 
 // ── 提问 → 桥接 /live/ask → 数字人开口（注入到这路直播流）──────
