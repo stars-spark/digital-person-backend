@@ -319,6 +319,8 @@ open http://116.62.136.211:8000/docs
 - [x] **S2 治"死脸"：LivePortrait 活底座**（已落地）：clone `~/Desktop/LivePortrait`（隔离 venv `~/Desktop/lp_venv`，`--system-site-packages` 共享 torch）；`inference.py -s 古风肖像 -d 驱动片段` 把真人眨眼/微表情迁到肖像→活底座 `assets/avatar_src/guofeng_female/idle_liveportrait.mp4`→烘成 `guofeng_lp`。底座生成脚本思路可写进设计文档
 - [x] **S3 MuseTalk 调参**：`genavatar.py` 的 `bbox_shift`（嘴框上下偏移，焊进 coords/latents，重烘~2min）。烘了 `guofeng_lp`(bs=0)/`guofeng_lp_bs5`(+5)；bs=-5 运行时人脸框出界起不来，跳过。对比片 `/tmp/s3_clips/cmp_s2_deathface.mp4`(改前/改后)、`cmp_s3_bbox.mp4`(bbox 0/+5)，**待用户盲评选定版**
 - [x] **录对比片流水线**（`/tmp/capture_talk.sh`）：起 LiveTalking→ffmpeg 抓 SRS 的 FLV→`/human` 驱动同台词→杀进程，逐 avatar 录同句对比。⚠️教训：GPU 任务必须串行（同跑烘录+LiveTalking 会 OOM）、每轮确认进程清零再启下一个
+- [x] **创新三/AR-lite 视觉定位导游**（`/chat/image` v2 两段式）：① qwen-vl 只认地标（出 `[位置:X]`→`location` 字段）② RAG 接地讲解+指路（事实由知识库约束、走 navigation 意图、复用 group_type 人格）。桥接 `/live/say`（数字人说任意文字）+ talk.html 📷 拍照闭环。实测大佛→📍大佛广场+真实典故+真景点指路；负向优雅引导
+- [x] **人流感知分流**（`backend/analytics/crowd.py` + `GET /analytics/crowd`）：用真实行为数据（14万行；灵山/拈花湾/西湖在数据中）算 热门度+月度季节性，叠时段模型→拥挤档位（空闲/适中/较多/繁忙）+ 旺淡季+错峰时段。接入导游：navigation/recommend 意图自动注入客流上下文→自然给"避开人流高峰/傍晚错峰"建议（含实时客流故不缓存）。⚠️ECS 部署需 pandas+openpyxl + 上传该 xlsx
 
 ### 联调 & 交付材料
 - [~] LiveTalking 端到端联调：**本地全栈跑通**（LiveTalking RTMP:8010 + SRS docker + RAG cloud:8000(0显存) + 桥接:9000 + 交互页 /talk），黑屏/OOM 均已修。**待亲眼验证**古风导游开口 + 手机真机「问→开口」<5s（任务 #9，停在"加载中"未等到画面）

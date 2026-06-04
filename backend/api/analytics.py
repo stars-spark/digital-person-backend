@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from backend.db.database import get_db
 from backend.llm.client import chat
+from backend.analytics.crowd import scenic_crowd
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -29,6 +30,17 @@ def _date_range(days: int) -> str:
     """返回 SQLite 可用的最早日期字符串。"""
     start = datetime.now() - timedelta(days=days)
     return start.strftime("%Y-%m-%d %H:%M:%S")
+
+
+# ── 客流热度感知（真实行为数据 + 时段模型，供导游错峰建议 & 数据大屏） ──
+@router.get("/crowd")
+def crowd(scenic_id: str = "lingshan"):
+    """某景区当前客流热度：各景点拥挤档位 + 旺淡季 + 错峰时段。
+
+    热门度/满意度/季节性来自真实游客行为数据（14 万行）；当前时段拥挤度为模型估计
+    （原始数据无小时维度）。黄山/故宫不在数据中，返回 has_data=false。
+    """
+    return scenic_crowd(scenic_id)
 
 
 # ── 1. 数据大屏核心数据 ────────────────────────────────────────────

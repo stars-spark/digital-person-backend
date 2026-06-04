@@ -18,7 +18,25 @@ from backend.db.database import save_conversation
 from backend.core.config import settings
 from backend.agent.orchestrator import classify
 from backend.agent.handlers import intent_directive, skip_retrieval
-from backend.agent.intents import INTENT_LABELS
+from backend.agent.intents import INTENT_LABELS, Intent
+from backend.analytics.crowd import crowd_brief
+
+# 路线/推荐意图才注入实时客流，让导游给「错峰/淡旺季」建议（随机应变职责）
+_CROWD_INTENTS = {Intent.NAVIGATION, Intent.RECOMMEND}
+
+
+def _directive_with_crowd(intent: Intent, scenic_id: str) -> str:
+    """意图指令 +（路线/推荐时）实时客流上下文。"""
+    directive = intent_directive(intent)
+    if intent in _CROWD_INTENTS:
+        brief = crowd_brief(scenic_id)
+        if brief:
+            directive += (
+                "\n\n" + brief +
+                "\n请把错峰/淡旺季提示自然融入推荐或路线里，口吻像贴心导游，"
+                "不要生硬罗列数据，也不要提及“模型/数据/系统”等字样。"
+            )
+    return directive
 
 SCENIC_CONFIG: dict[str, dict] = {
     "lingshan":  {"name": "灵山胜境",   "guide_name": "灵山小慧"},
@@ -68,9 +86,12 @@ def answer(
     history = history or []
     # 按 人格 + 语言 隔离缓存，避免跨人格/跨语种串答
     cache_query = f"{group_type}::{lang}::{query}"
+    intent = classify(query, history)  # Orchestrator 分派：决定走哪条处理链路
+    # 路线/推荐含实时客流（随时段变），不缓存，避免冻结错峰建议
+    cacheable = not history and intent not in _CROWD_INTENTS
 
     # ── 缓存命中：无历史时才缓存（历史对话有上下文，不能复用） ──────
-    if not history:
+    if cacheable:
         cached = answer_cache.get(scenic_id, cache_query)
         if cached:
             save_conversation(session_id, scenic_id, query,
@@ -78,7 +99,6 @@ def answer(
             return {**cached, "from_cache": True}
 
     cfg = get_scenic_config(scenic_id)
-    intent = classify(query, history)  # Orchestrator 分派：决定走哪条处理链路
 
     if skip_retrieval(intent):         # 闲聊无需检索知识库，省一次检索延迟
         context_chunks = []
@@ -89,7 +109,7 @@ def answer(
 
     system_prompt = build_system_prompt(
         cfg["name"], cfg["guide_name"], context_chunks, lang,
-        intent_directive(intent), group_type,
+        _directive_with_crowd(intent, scenic_id), group_type,
     )
     raw_reply = chat(system_prompt, history, query, fast=fast)
     reply, emotion = extract_emotion(raw_reply)
@@ -104,7 +124,7 @@ def answer(
         "from_cache": False,
     }
 
-    if not history:
+    if cacheable:
         answer_cache.set(scenic_id, cache_query, result)
 
     save_conversation(session_id, scenic_id, query, reply, emotion, context_used)
@@ -148,12 +168,13 @@ async def answer_stream(
     history = history or []
     cache_query = f"{group_type}::{lang}::{query}"  # 按 人格+语言 隔离缓存
     intent = classify(query, history)  # 先分派；无历史时纯规则匹配，0ms
+    cacheable = not history and intent not in _CROWD_INTENTS  # 含实时客流的不缓存
 
     def _intent_event() -> dict:
         return {"type": "intent", "value": intent.value, "label": INTENT_LABELS[intent]}
 
     # ── 缓存命中：模拟分句流，接口与正常流保持一致 ────────────────────
-    if not history:
+    if cacheable:
         cached = answer_cache.get(scenic_id, cache_query)
         if cached:
             save_conversation(session_id, scenic_id, query,
@@ -177,9 +198,10 @@ async def answer_stream(
             context_chunks = await asyncio.to_thread(retrieve, retrieval_query, scenic_id)
 
     context_used = len(context_chunks) > 0
+    directive = await asyncio.to_thread(_directive_with_crowd, intent, scenic_id)
     system_prompt = build_system_prompt(
         cfg["name"], cfg["guide_name"], context_chunks, lang,
-        intent_directive(intent), group_type,
+        directive, group_type,
     )
 
     yield _intent_event()  # intent 在 LLM 调用前即可下发，比 emotion 更早
@@ -196,7 +218,7 @@ async def answer_stream(
 
     reply, _ = extract_emotion(full_text)
 
-    if not history:
+    if cacheable:
         answer_cache.set(scenic_id, cache_query, {
             "reply": reply, "emotion": emotion,
             "sources": list({c.split("|")[0].strip() for c in context_chunks}),
