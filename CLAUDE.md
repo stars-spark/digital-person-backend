@@ -315,6 +315,10 @@ open http://116.62.136.211:8000/docs
 - [x] **游客端语音输入 + VAD 自动断句**（`talk.html`）：点麦克风→Web Audio 实时 RMS 能量检测→说完静音 0.8s 自动停录→`/asr` 转写→自动发问；零依赖离线可用（对标 OpenAvatarChat 的 Silero-VAD 角色，能量版）。⚠️ getUserMedia 需 localhost/HTTPS，手机走 http 局域网 IP 会被禁麦
 - [x] **古风女导游形象生成**（任务 #5-7 完成）：`scripts/gen_avatar_asset.py` 用通义万相 文生图(wanx2.1-t2i-plus 竖版720x1280)→图生视频(wanx2.1-i2v-turbo 5s微动)→`genavatar.py` 烘成 MuseTalk avatar `guofeng_female`；素材在 `assets/avatar_src/guofeng_female/`。桥接 `AVATAR_MAP` 已把 `female_elegant/female_young`→`guofeng_female`
 - [x] **OpenAvatarChat 吸收方案**（`docs/OpenAvatarChat吸收方案.md`）：逐模块对照 + 落地排序（①模块化叙事 ②VAD✅ ③TTS换CosyVoice ④LiteAvatar暂缓）
+- [x] **数字人自然度诊断 + 选型报告**（`docs/数字人自然度诊断与选型.md`）：恐怖谷根因=MuseTalk 只换嘴、整脸复制底座（"死脸"）；横评 Ditto/EchoMimic/Sonic/LivePortrait/InteractAvatar（实时 vs 离线取舍）；ComfyUI=离线工具非直播引擎
+- [x] **S2 治"死脸"：LivePortrait 活底座**（已落地）：clone `~/Desktop/LivePortrait`（隔离 venv `~/Desktop/lp_venv`，`--system-site-packages` 共享 torch）；`inference.py -s 古风肖像 -d 驱动片段` 把真人眨眼/微表情迁到肖像→活底座 `assets/avatar_src/guofeng_female/idle_liveportrait.mp4`→烘成 `guofeng_lp`。底座生成脚本思路可写进设计文档
+- [x] **S3 MuseTalk 调参**：`genavatar.py` 的 `bbox_shift`（嘴框上下偏移，焊进 coords/latents，重烘~2min）。烘了 `guofeng_lp`(bs=0)/`guofeng_lp_bs5`(+5)；bs=-5 运行时人脸框出界起不来，跳过。对比片 `/tmp/s3_clips/cmp_s2_deathface.mp4`(改前/改后)、`cmp_s3_bbox.mp4`(bbox 0/+5)，**待用户盲评选定版**
+- [x] **录对比片流水线**（`/tmp/capture_talk.sh`）：起 LiveTalking→ffmpeg 抓 SRS 的 FLV→`/human` 驱动同台词→杀进程，逐 avatar 录同句对比。⚠️教训：GPU 任务必须串行（同跑烘录+LiveTalking 会 OOM）、每轮确认进程清零再启下一个
 
 ### 联调 & 交付材料
 - [~] LiveTalking 端到端联调：**本地全栈跑通**（LiveTalking RTMP:8010 + SRS docker + RAG cloud:8000(0显存) + 桥接:9000 + 交互页 /talk），黑屏/OOM 均已修。**待亲眼验证**古风导游开口 + 手机真机「问→开口」<5s（任务 #9，停在"加载中"未等到画面）
@@ -456,6 +460,43 @@ cd ~/Desktop/Digital_Person && RAG_BASE=http://localhost:8000 LIVETALKING_BASE=h
 - [ ] **景点图片特征库**（可选，如有时间）
   - 每个景点 2-3 张参考图存入知识库，用 qwen-vl 做图文匹配
 
+### 创新四：空间感知「主动导游」（2026-06-04 讨论定向，产品总纲）
+
+> 立意：把产品从「会说话的问答框」升级为**真正的导游**。真实导游职责实证（来源：导游岗位职责、
+> "what makes a great tour guide"）= **讲故事的人 + 带路的人 + 随机应变的人**。
+> 用户直觉「会说话还不够」精准命中后两项——也正是当前最缺的。
+
+**真实导游职责 → 我们的功能映射**
+
+| 真实导游职责 | 我们的功能 | 现状 |
+|---|---|---|
+| 讲解/讲故事（灵魂：事实→愿意听的体验） | RAG + 叙事人格 | ✅ 有，偏"报事实"，可调更"讲故事" |
+| 带路/行程组织/控制节奏 | 路线推荐 + 逐段指路 | 路线推荐✅；**逐段指路缺** |
+| 答疑 | RAG 问答 | ✅ 97.7% |
+| 随机应变（天气/人流→改行程） | 时间/天气/人流上下文感知 | ❌ **缺** |
+| 安全 & 关怀 & 微笑服务 | empathy 意图 + 主动关怀 | empathy✅；主动性缺 |
+| 因人而异（老人/孩子/情侣） | `group_type` 人格 | ✅ 有 |
+| 会看地图、会用导航（导游硬技能） | 视觉定位 + 指路 | ❌ **缺（创新三）** |
+
+**核心差别 = 主动**：触发源从「提问」扩展到「位置/时间/上下文」。多智能体已有
+`navigation`/`recommend`/`empathy` 意图，缺的是由空间/上下文触发，而非提问触发。
+
+**AR 的诚实拆解（关键认知）**：
+- ✅ **AR-lite（做，初赛能落地）**：相机拍一帧 → qwen-vl 认地标 → 定位 + 口语指路。
+  复用 `/chat/image`，体验上"开相机它就懂我在哪、给我指路"，**用户感觉到的 AR 80% 来自这里**。
+- ⚠️ **真 AR（实景叠加 3D 箭头）= 深坑**：需 SLAM/ARCore/8thWall 空间定位+姿态追踪，
+  一人几周必误交付。**标为赛后/决赛拉伸项**，答辩说"已规划"即可。
+
+**落地优先级（演示惊艳 ÷ 工作量）**：
+1. GPS 位置感知 + 主动讲解（`navigator.geolocation`，可加"模拟我在X点"下拉做演示）
+2. 拍照视觉定位（= 创新三，坐实多模态硬指标）
+3. 文字/语音逐段指路（景点结构化数据建关系图 + RAG）
+4. 时间/天气感知推荐（天气 API + 当前时间，低成本高"贴心感"）
+
+**演示叙事线**：打开 App→数字人微笑打招呼→开相机拍大佛→视觉定位"您在大佛广场"→
+按 group_type 主动"带孩子我用讲故事方式"→指路→看天气"午后日晒强，先去室内梵宫"→边走边讲解。
+（一条线串起 多模态+多智能体+空间感知+主动性+人格）
+
 ### 初赛交付材料（硬性）
 
 - [ ] **总体设计文档**：以 `新idea景区导览AI数字人.docx` 为底稿，补充：
@@ -480,3 +521,10 @@ cd ~/Desktop/Digital_Person && RAG_BASE=http://localhost:8000 LIVETALKING_BASE=h
 4. **手机 H5 真机验证**：需解决 getUserMedia 麦克风的 HTTPS 问题（局域网 http 禁麦）
 5. **游客端前端 + 管理后台**（问答交互页✅、知识库管理、数字人配置、数据大屏）
 6. **总体设计文档**：补充实测数据（97.7% 准确率、延迟、桥接架构图、形象生成链路）后可提交
+
+### 产品化（可选加分，赛后/有余力）
+
+- [ ] **打包成 Android APK**（Capacitor 套壳现有 H5，~1 天）：APK 是「壳客户端」，RAG/LLM 走云、数字人渲染留 GPU 服务器推流给 App（手机带不动 MuseTalk，不变）。
+  - **顺带好处**：App 是安全本地源（`capacitor://`），**直接解决「手机 http 局域网 getUserMedia 禁麦」问题**，相机/麦克风免折腾 HTTPS。
+  - 赛题最终形态要「小程序/H5」，APK 是合法加分项但非必须；**核心功能稳了再做**，别让打包拖延初赛交付。
+  - 成本提醒：公开发布需常驻云 GPU 跑数字人；初赛演示用本地 4080 + 同 WiFi 即可。

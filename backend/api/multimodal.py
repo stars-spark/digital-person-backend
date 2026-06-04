@@ -23,6 +23,7 @@ class ImageChatRequest(BaseModel):
 class ImageChatResponse(BaseModel):
     reply: str
     emotion: str
+    location: str | None = None   # 识别到的景区地标（如"大佛广场"），无法定位时为 null
     model_used: str = "qwen-vl-max"
 
 
@@ -34,7 +35,7 @@ async def image_chat_endpoint(req: ImageChatRequest):
     cfg = get_scenic_config(req.scenic_id)
 
     try:
-        reply, emotion = answer_with_image(
+        reply, emotion, location = answer_with_image(
             image_b64=req.image_b64,
             question=req.question,
             scenic_name=cfg["name"],
@@ -43,13 +44,15 @@ async def image_chat_endpoint(req: ImageChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"多模态模型调用失败: {e}")
 
+    # 把识别到的位置记进会话，便于"主动导游"后续基于位置追问
+    loc_note = f"（定位：{location}）" if location else ""
     save_conversation(
         session_id=req.session_id,
         scenic_id=req.scenic_id,
-        user_message=f"[图片] {req.question}",
+        user_message=f"[拍照] {req.question}{loc_note}",
         ai_reply=reply,
         emotion=emotion,
         context_used=False,
     )
 
-    return ImageChatResponse(reply=reply, emotion=emotion)
+    return ImageChatResponse(reply=reply, emotion=emotion, location=location)

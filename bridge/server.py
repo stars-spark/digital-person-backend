@@ -197,6 +197,42 @@ async def live_ask(body: AskIn):
         }
 
 
+class SayIn(BaseModel):
+    sessionid: str                 # LiveTalking WebRTC/RTMP 会话 ID
+    text: str                      # 直接要数字人说出来的文字（如拍照定位讲解的结果）
+    scenic_id: str = "lingshan"    # 决定音色
+    interrupt: bool = True
+
+
+@app.post("/live/say")
+async def live_say(body: SayIn):
+    """让数字人直接说出一段给定文字（不走 RAG）。
+
+    用于「拍照视觉定位」闭环：游客拍照 → /chat/image 出定位+讲解+指路文字 →
+    本端点把这段文字按景区音色送 LiveTalking /human，让数字人开口说。
+    """
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text 不能为空")
+    async with httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0)) as client:
+        _, voice = await _resolve_config(client, body.scenic_id)
+        try:
+            await client.post(
+                f"{LIVETALKING_BASE}/human",
+                json={
+                    "sessionid": body.sessionid,
+                    "text": text,
+                    "type": "echo",
+                    "interrupt": body.interrupt,
+                    "tts": {"ref_file": voice},
+                },
+                timeout=15,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"驱动数字人失败: {type(e).__name__}: {e}")
+    return {"ok": True, "voice": voice, "chars": len(text)}
+
+
 @app.get("/stream.flv")
 async def stream_flv():
     """反代 SRS 的 HTTP-FLV 直播流。

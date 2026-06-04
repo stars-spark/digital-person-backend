@@ -58,9 +58,11 @@
   <div class="reply" id="reply">连接数字人后，在下方提问，TA 会开口回答。</div>
   <div class="ask">
     <input id="msg" placeholder="问点什么，如：灵山大佛有多高？" onkeydown="if(event.key==='Enter')ask()">
+    <button id="cam" class="mic" onclick="$('camfile').click()" disabled title="拍照定位">📷</button>
     <button id="mic" class="mic" onclick="toggleVoice()" disabled title="语音提问">🎤</button>
     <button id="send" onclick="ask()" disabled>问</button>
   </div>
+  <input type="file" id="camfile" accept="image/*" capture="environment" style="display:none" onchange="onPhoto(this.files[0])">
   <div class="hint" id="hint">画面默认静音，点视频上的 🔊 取消静音</div>
 </div>
 
@@ -91,8 +93,8 @@ function startPlay(){
   player.attachMediaElement($('video'));
   player.load();
   player.play().then(()=>{ $('video').muted=false; }).catch(()=>{});
-  setBadge('已连接 ●','on'); $('send').disabled=false; $('mic').disabled=false;
-  $('hint').textContent='🎤 点麦克风语音提问（说完自动识别），或打字提问';
+  setBadge('已连接 ●','on'); $('send').disabled=false; $('mic').disabled=false; $('cam').disabled=false;
+  $('hint').textContent='🎤 语音提问 · 📷 拍照定位讲解 · 或打字提问';
 }
 
 // ── 提问 → 桥接 /live/ask → 数字人开口（注入到这路直播流）──────
@@ -178,6 +180,31 @@ async function onRecStop(){
     if(d.text && d.text.trim()){ $('msg').value=d.text.trim(); ask(); }   // 识别成功 → 自动发问
     else { $('reply').textContent='没听清，请再说一次'; $('hint').textContent='🎤 再试一次'; }
   }catch(e){ setMic('idle'); $('reply').textContent='识别失败：'+e.message; }
+}
+// ── 拍照视觉定位 + 口语指路（创新三 / AR-lite）──────────────────
+// 拍照 → /chat/image 出「定位+讲解+指路」文字 + 📍位置 → 桥接 /live/say 让数字人开口说
+async function onPhoto(file){
+  if(!file) return;
+  if(!player){ alert('请先连接数字人'); return; }
+  $('cam').disabled=true; $('pills').innerHTML=''; $('reply').textContent='识别画面中…';
+  const t0=Date.now();
+  try{
+    const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});
+    const b64=dataUrl.slice(dataUrl.indexOf(',')+1);
+    const m=/data:image\/(\w+);/.exec(dataUrl); const fmt=m?m[1]:'jpeg';
+    const r=await fetch('/chat/image',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:'talk',scenic_id:$('scenic').value,image_b64:b64,image_format:fmt,
+        question:'我面前是什么？帮我定位、讲解，并指引我接下来去哪。'})});
+    const d=await r.json();
+    if(!r.ok){ $('reply').textContent='出错：'+(d.detail||r.status); return; }
+    const dt=((Date.now()-t0)/1000).toFixed(1);
+    $('reply').textContent=d.reply||'(无结果)';
+    $('pills').innerHTML=(d.location?`<span class="pill">📍 ${d.location}</span>`:`<span class="pill emo">未定位</span>`)
+      +`<span class="pill emo">情绪 ${d.emotion||'-'}</span>`+`<span class="pill tm">⏱ ${dt}s</span>`;
+    if(d.reply){ fetch(BR+'/live/say',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sessionid,text:d.reply,scenic_id:$('scenic').value})}).catch(()=>{}); }
+  }catch(e){ $('reply').textContent='识别失败：'+e.message; }
+  finally{ $('cam').disabled=false; $('camfile').value=''; }
 }
 </script>
 </body>
