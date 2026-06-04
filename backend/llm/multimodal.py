@@ -55,6 +55,38 @@ def _extract_location(text: str) -> tuple[str, str | None]:
     return clean, loc
 
 
+def locate_landmark(
+    image_b64: str,
+    scenic_name: str = "灵山胜境",
+    image_format: str = "jpeg",
+) -> str | None:
+    """视觉定位（两段式第一段）：只识别这是本景区的哪个地标，返回地标名或 None。
+
+    只让 qwen-vl 做它最擅长的"认地标"，讲解/指路交给 RAG（事实由知识库约束，压幻觉）。
+    """
+    system = (
+        f"游客此刻人在{scenic_name}景区内，拍了这张照片。请只判断这是{scenic_name}的哪个景点。"
+        f"规则：能确定就只输出景点名称（例如：大佛广场），不要任何多余文字、标点或解释；"
+        f"若画面明显不是景区景物（人、食物、天空）或一眼看出是别处地标，就只输出两个字：未识别。"
+    )
+    image_url = f"data:image/{image_format};base64,{image_b64}"
+    messages = [
+        {"role": "system", "content": [{"text": system}]},
+        {"role": "user", "content": [{"image": image_url}, {"text": "这是哪个景点？"}]},
+    ]
+    response = MultiModalConversation.call(model=settings.vl_model, messages=messages)
+    if response.status_code != 200 or response.output is None:
+        raise RuntimeError(
+            f"DashScope 多模态调用失败 [{response.status_code} {response.code}]: {response.message}"
+        )
+    raw = response.output.choices[0].message.content[0]["text"].strip()
+    # 清掉可能的标点/换行/标签残留，只留景点名
+    loc = raw.strip().strip("。.！!，,、：:").splitlines()[0].strip() if raw else ""
+    if not loc or loc in ("未识别", "无", "未知") or len(loc) > 20:
+        return None
+    return loc
+
+
 def answer_with_image(
     image_b64: str,
     question: str,
