@@ -401,11 +401,14 @@ LiveTalking 本地零成本、WebRTC 流任意浏览器（含手机/微信 H5）
 # ① SRS 媒体服务器（docker，收 RTMP 转 HTTP-FLV；只需启一次，会常驻）
 docker start srs   # 端口 1935(RTMP) 1985(API) 8080(HTTP-FLV)
 
-# ② 数字人（RTMP 模式，batch4 防 OOM，推流到 SRS）
+# ② 数字人（RTMP 模式，batch4 防 OOM；TTS 用百炼 Qwen-TTS 云端实时，0 本地显存）
 cd ~/Desktop/LiveTalking && unset ALL_PROXY all_proxy HTTP_PROXY http_proxy HTTPS_PROXY https_proxy
+DASHSCOPE_API_KEY=$(grep DASHSCOPE_API_KEY ~/Desktop/Digital_Person/.env | cut -d= -f2) \
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   ~/miniconda3/envs/livetalking/bin/python app.py --transport rtmp --model musetalk \
-  --avatar_id musetalk_avatar1 --batch_size 4 --push_url 'rtmp://localhost/live/livestream'
+  --avatar_id guofeng_female --batch_size 4 --tts qwentts --REF_FILE Cherry \
+  --push_url 'rtmp://localhost/live/livestream'
+# 注：--tts qwentts 需 livetalking 环境装 dashscope>=1.25.11；音色 Cherry(女)/Ethan(男)等 Qwen 系统音色
 
 # ③ RAG 后端（cloud 模式，0 显存，0.0.0.0 让手机可访问）
 cd ~/Desktop/Digital_Person && DEPLOY_MODE=cloud .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000

@@ -39,14 +39,16 @@ SRS_FLV = os.environ.get("SRS_FLV", "http://localhost:8080/live/livestream.flv")
 # digital-human/config 里存的是业务占位 ID（female_elegant / voice_gentle_f…），
 # 这里把它们翻译成下游真正认识的资源名。生成新形象/接入新音色后只改这两张表。
 
-# voice_id → 真实 edge-TTS 音色名（tts/edge.py 读 tts.ref_file）
+# voice_id → 百炼 Qwen-TTS 音色名（LiveTalking --tts qwentts 读 tts.ref_file）
+# Qwen3-TTS-Flash-Realtime：云端实时合成、0 本地 GPU、用现有 DASHSCOPE_API_KEY，
+# 自然度远胜 edge-TTS。音色按消息可切（qwentts 检测到 ref_file 变化即重连换音色）。
 VOICE_MAP = {
-    "voice_gentle_f": "zh-CN-XiaoxiaoNeural",  # 温柔女声（自然度最佳，默认）
-    "voice_lively_f": "zh-CN-XiaoyiNeural",    # 活泼女声
-    "voice_calm_m":   "zh-CN-YunjianNeural",   # 沉稳男声
-    "voice_bright_m": "zh-CN-YunxiNeural",     # 明朗男声
+    "voice_gentle_f": "Cherry",   # 温柔女声（默认）
+    "voice_lively_f": "Cherry",   # 活泼女声（暂同，Qwen 音色库可再细分）
+    "voice_calm_m":   "Ethan",    # 沉稳男声
+    "voice_bright_m": "Ethan",    # 明朗男声
 }
-DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
+DEFAULT_VOICE = "Cherry"
 
 # avatar_id → 真实 LiveTalking avatar 目录名（data/avatars/<id>）
 # 古风女导游 guofeng_female 由通义万相生成（scripts/gen_avatar_asset.py）→ genavatar 烘成。
