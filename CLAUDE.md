@@ -321,6 +321,10 @@ open http://116.62.136.211:8000/docs
 - [x] **录对比片流水线**（`/tmp/capture_talk.sh`）：起 LiveTalking→ffmpeg 抓 SRS 的 FLV→`/human` 驱动同台词→杀进程，逐 avatar 录同句对比。⚠️教训：GPU 任务必须串行（同跑烘录+LiveTalking 会 OOM）、每轮确认进程清零再启下一个
 - [x] **创新三/AR-lite 视觉定位导游**（`/chat/image` v2 两段式）：① qwen-vl 只认地标（出 `[位置:X]`→`location` 字段）② RAG 接地讲解+指路（事实由知识库约束、走 navigation 意图、复用 group_type 人格）。桥接 `/live/say`（数字人说任意文字）+ talk.html 📷 拍照闭环。实测大佛→📍大佛广场+真实典故+真景点指路；负向优雅引导
 - [x] **人流感知分流**（`backend/analytics/crowd.py` + `GET /analytics/crowd`）：用真实行为数据（14万行；灵山/拈花湾/西湖在数据中）算 热门度+月度季节性，叠时段模型→拥挤档位（空闲/适中/较多/繁忙）+ 旺淡季+错峰时段。接入导游：navigation/recommend 意图自动注入客流上下文→自然给"避开人流高峰/傍晚错峰"建议（含实时客流故不缓存）。⚠️ECS 部署需 pandas+openpyxl + 上传该 xlsx
+- [x] **口播格式修复（重要）**：`SYSTEM_PROMPT_TEMPLATE` 加全局口播规则——回答会被数字人朗读，禁 Markdown（#、**、-、编号清单），改"先…再…最后…"口语过渡。一处修复覆盖所有意图，解决路线/推荐回复念出"井号一二三"的问题
+- [x] **时间天气感知**（`backend/analytics/env_context.py`）：scenic→城市，wttr.in 免费无 key 查实时天气（30min 缓存+超时+优雅降级，取不到只用时间不影响主流程），时段（清晨/上午/…/夜晚）永远可用。与客流一起经 `_directive_with_context` 注入 navigation/recommend→导游自然给"午后日晒先逛室内/下雨带伞/傍晚看日落"建议
+- [x] **行程总结/电子游记**（`backend/api/trip.py`，`GET /trip/summary?session_id=&scenic_id=`）：读本次会话历史（含拍照定位记录），LLM 生成温暖游记回顾（提去过的景点+聊过的话题+祝福，口语无 markdown），体现导游"收尾关怀"。空会话优雅降级
+- [x] **重组覆盖测试**（`/tmp/test_all.py`）：14 项全过——口播无 markdown、客流+天气融入、视觉定位 v2、行程总结引用拍照点、无数据/空会话优雅降级
 
 ### 联调 & 交付材料
 - [~] LiveTalking 端到端联调：**本地全栈跑通**（LiveTalking RTMP:8010 + SRS docker + RAG cloud:8000(0显存) + 桥接:9000 + 交互页 /talk），黑屏/OOM 均已修。**待亲眼验证**古风导游开口 + 手机真机「问→开口」<5s（任务 #9，停在"加载中"未等到画面）

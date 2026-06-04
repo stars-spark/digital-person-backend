@@ -20,22 +20,19 @@ from backend.agent.orchestrator import classify
 from backend.agent.handlers import intent_directive, skip_retrieval
 from backend.agent.intents import INTENT_LABELS, Intent
 from backend.analytics.crowd import crowd_brief
+from backend.analytics.env_context import env_brief
 
-# 路线/推荐意图才注入实时客流，让导游给「错峰/淡旺季」建议（随机应变职责）
+# 路线/推荐意图才注入实时客流 + 时间天气，让导游给「错峰/避暑/带伞」等随机应变建议
 _CROWD_INTENTS = {Intent.NAVIGATION, Intent.RECOMMEND}
 
 
-def _directive_with_crowd(intent: Intent, scenic_id: str) -> str:
-    """意图指令 +（路线/推荐时）实时客流上下文。"""
+def _directive_with_context(intent: Intent, scenic_id: str) -> str:
+    """意图指令 +（路线/推荐时）实时客流 + 时间天气环境上下文。"""
     directive = intent_directive(intent)
     if intent in _CROWD_INTENTS:
-        brief = crowd_brief(scenic_id)
-        if brief:
-            directive += (
-                "\n\n" + brief +
-                "\n请把错峰/淡旺季提示自然融入推荐或路线里，口吻像贴心导游，"
-                "不要生硬罗列数据，也不要提及“模型/数据/系统”等字样。"
-            )
+        for brief in (crowd_brief(scenic_id), env_brief(scenic_id)):
+            if brief:
+                directive += "\n\n" + brief
     return directive
 
 SCENIC_CONFIG: dict[str, dict] = {
@@ -109,7 +106,7 @@ def answer(
 
     system_prompt = build_system_prompt(
         cfg["name"], cfg["guide_name"], context_chunks, lang,
-        _directive_with_crowd(intent, scenic_id), group_type,
+        _directive_with_context(intent, scenic_id), group_type,
     )
     raw_reply = chat(system_prompt, history, query, fast=fast)
     reply, emotion = extract_emotion(raw_reply)
@@ -198,7 +195,7 @@ async def answer_stream(
             context_chunks = await asyncio.to_thread(retrieve, retrieval_query, scenic_id)
 
     context_used = len(context_chunks) > 0
-    directive = await asyncio.to_thread(_directive_with_crowd, intent, scenic_id)
+    directive = await asyncio.to_thread(_directive_with_context, intent, scenic_id)
     system_prompt = build_system_prompt(
         cfg["name"], cfg["guide_name"], context_chunks, lang,
         directive, group_type,

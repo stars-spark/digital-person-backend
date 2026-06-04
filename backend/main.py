@@ -16,6 +16,7 @@ from backend.api.analytics import router as analytics_router
 from backend.api.multimodal import router as mm_router
 from backend.api.digital_human import router as dh_router
 from backend.api.asr import router as asr_router
+from backend.api.trip import router as trip_router
 
 
 @asynccontextmanager
@@ -53,6 +54,7 @@ app.include_router(kb_router)
 app.include_router(analytics_router)
 app.include_router(dh_router)
 app.include_router(asr_router)
+app.include_router(trip_router)
 
 
 @app.get("/health")
