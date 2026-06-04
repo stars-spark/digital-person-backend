@@ -81,3 +81,17 @@ def talk_ui():
     """数字人交互页（WebRTC 数字人 + 问答走桥接 → 端到端语音问答演示）。"""
     p = Path(__file__).resolve().parent.parent / "talk.html"
     return FileResponse(p, media_type="text/html")
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard_ui():
+    """运营数据大屏（ECharts 可视化 analytics + 实时客流热度）。"""
+    p = Path(__file__).resolve().parent.parent / "dashboard.html"
+    return FileResponse(p, media_type="text/html")
+
+
+@app.get("/echarts.min.js", include_in_schema=False)
+def echarts_js():
+    """本地服 ECharts（绕开浏览器代理对 CDN 的拦截）。"""
+    p = Path(__file__).resolve().parent.parent / "echarts.min.js"
+    return FileResponse(p, media_type="application/javascript")
