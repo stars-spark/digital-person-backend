@@ -327,6 +327,9 @@ open http://116.62.136.211:8000/docs
 - [x] **重组覆盖测试**（`/tmp/test_all.py`）：14 项全过——口播无 markdown、客流+天气融入、视觉定位 v2、行程总结引用拍照点、无数据/空会话优雅降级
 - [x] **主动迎宾**（`GET /trip/greeting?scenic_id=&group_type=`）：游客一连接，数字人**主动**微笑打招呼+自我介绍+邀请提问/拍照（按景区 guide_name + 人格差异化，口语无 markdown）。talk.html 连接成功后自动 `/trip/greeting`→`/live/say` 驱动开口。这是"开场画面"，演示视频第一幕。实测：灵山小慧/西湖小雨各自迎宾、亲子版提小朋友
 - [x] **数字人自然度反馈（2026-06-04）**：LivePortrait idle 仍有发型穿模+面部抖（2D 扭曲天花板）。根因+铁三角（真实/身体动作/实时 取二）见 `docs/数字人自然度诊断与选型.md`。决策：idle 改图生视频（可灵/万相，无穿模）；身体动作放演示视频离线英雄镜头
+- [x] **TTS 换百炼 Qwen-TTS（commit 5b217e7）**：edge-TTS 偏机械 → LiveTalking 内置 `qwentts`（百炼 Qwen3-TTS-Flash-Realtime WebSocket，0 本地 GPU、用现有 key）。桥接 VOICE_MAP 改 Qwen 音色（Cherry 女/Ethan 男，可按消息切）。启动加 `DASHSCOPE_API_KEY ... --tts qwentts --REF_FILE Cherry`；livetalking 环境需 dashscope>=1.25.11（已装）
+- [x] **形象素材库（20 候选）**：`scripts/gen_avatar_candidates.py` 通义万相批量出 20 张候选 → `assets/avatar_candidates/`（竖版 720x1280，正脸嘴清晰可烘 MuseTalk）。**用户选定 12/15/16/17/18/19**（甜美/清纯/亲和系）。审美偏好见 [[avatar-aesthetic-preference]] 记忆。待办：选中款 图生视频→烘 avatar；建 manifest 标签库；管理端形象画廊页
+- [~] **ComfyUI 自研形象生成（进行中，加自研感+颜值可控）**：本地 `~/Desktop/ComfyUI`（venv `~/Desktop/comfy_venv` 共享 livetalking torch），下写实大模型 RealVisXL V5.0；计划搭"提示词→写实SDXL→FaceDetailer修脸→竖版导游肖像"工作流，经 ComfyUI API 接管理端「AI生成新形象」按钮。⚠️ ComfyUI 仅作**后台引擎**（管理员只见一个输入框），不暴露节点界面；纯生成人像万相也能做，ComfyUI 的价值=本地自研感+修脸颜值更可控+答辩展示工作流
 
 ### 联调 & 交付材料
 - [~] LiveTalking 端到端联调：**本地全栈跑通**（LiveTalking RTMP:8010 + SRS docker + RAG cloud:8000(0显存) + 桥接:9000 + 交互页 /talk），黑屏/OOM 均已修。**待亲眼验证**古风导游开口 + 手机真机「问→开口」<5s（任务 #9，停在"加载中"未等到画面）
