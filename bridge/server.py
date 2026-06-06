@@ -204,6 +204,7 @@ class SayIn(BaseModel):
     text: str                      # 直接要数字人说出来的文字（如拍照定位讲解的结果）
     scenic_id: str = "lingshan"    # 决定音色
     interrupt: bool = True
+    emotion: str = "neutral"       # 面部情绪：驱动数字人切换表情底座（neutral/happy/concerned…）
 
 
 @app.post("/live/say")
@@ -226,7 +227,7 @@ async def live_say(body: SayIn):
                     "text": text,
                     "type": "echo",
                     "interrupt": body.interrupt,
-                    "tts": {"ref_file": voice},
+                    "tts": {"ref_file": voice, "emotion": body.emotion},
                 },
                 timeout=15,
             )
