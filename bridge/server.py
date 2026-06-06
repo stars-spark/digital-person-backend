@@ -53,12 +53,12 @@ DEFAULT_VOICE = "Cherry"
 # avatar_id → 真实 LiveTalking avatar 目录名（data/avatars/<id>）
 # 古风女导游 guofeng_female 由通义万相生成（scripts/gen_avatar_asset.py）→ genavatar 烘成。
 AVATAR_MAP = {
-    "female_elegant": "guofeng_female",   # 端庄优雅 → 古风女导游
-    "female_young":   "guofeng_female",
-    "male_mature":    "musetalk_avatar1",  # TODO: 生成古风男导游后改这里
+    "female_elegant": "sweet_bob",   # 主形象：美图精修的甜美波波头(眼袋淡/鼻孔小/无穿模)
+    "female_young":   "sweet_bob",
+    "male_mature":    "musetalk_avatar1",  # TODO: 生成男导游后改这里
     "male_young":     "musetalk_avatar1",
 }
-DEFAULT_AVATAR = "musetalk_avatar1"
+DEFAULT_AVATAR = "sweet_bob"
 
 app = FastAPI(title="数字人桥接层", version="0.1.0")
 app.add_middleware(

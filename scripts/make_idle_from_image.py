@@ -18,10 +18,9 @@ from dotenv import load_dotenv
 
 I2V_MODEL = "wanx2.1-i2v-turbo"
 MOTION = (
-    "人物保持端庄温和的微笑，整体安静克制，自然地以正常频率眨眼、"
-    "眨眼干脆利落真实自然、绝不是慢动作，头部与肩膀几乎静止、仅有微弱的呼吸般起伏，"
-    "头发基本不动、只有几乎察觉不到的轻微浮动，镜头固定，背景静止，"
-    "除眨眼外其余动作幅度都很小，眼神灵动自然"
+    "人物保持端庄温和的微笑，自然地以正常频率眨眼、眨眼干脆利落真实自然不是慢动作，"
+    "头部和肩膀有轻微自然的晃动，短发随之轻轻自然摆动，呼吸般的细微起伏，"
+    "镜头固定，背景静止，动作幅度小而自然真实，眼神灵动有神，气质亲和"
 )
 
 
@@ -43,6 +42,7 @@ def main():
     if rsp.status_code != 200:
         sys.exit(f"❌ 图生视频失败 code={rsp.code} msg={rsp.message}")
     url = rsp.output.video_url
+    dst.parent.mkdir(parents=True, exist_ok=True)
     with httpx.Client(trust_env=False, timeout=180, follow_redirects=True) as c:
         dst.write_bytes(c.get(url).content)
     print(f"✅ idle 视频已存: {dst}")
