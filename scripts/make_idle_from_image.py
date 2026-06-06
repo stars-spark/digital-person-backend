@@ -18,16 +18,17 @@ from dotenv import load_dotenv
 
 I2V_MODEL = "wanx2.1-i2v-turbo"
 MOTION = (
-    "人物保持端庄温和的微笑，自然地以正常频率眨眼、眨眼干脆利落真实自然不是慢动作，"
-    "头部和肩膀有轻微自然的晃动，短发随之轻轻自然摆动，呼吸般的细微起伏，"
-    "镜头固定，背景静止，动作幅度小而自然真实，眼神灵动有神，气质亲和"
+    "人物保持端庄温和的微笑，眼神灵动有神、明快自然地眨眼，眨眼快速干脆、绝不是慢动作慢镜头，"
+    "头部和肩膀有轻微自然的晃动，短发随之自然摆动，"
+    "整体动作自然真实有生气、节奏正常不拖沓不梦幻，镜头固定，背景静止，气质亲和"
 )
 
 
 def main():
     if len(sys.argv) < 3:
-        sys.exit("用法: make_idle_from_image.py <输入图> <输出mp4>")
+        sys.exit("用法: make_idle_from_image.py <输入图> <输出mp4> [表情motion覆盖]")
     src, dst = Path(sys.argv[1]), Path(sys.argv[2])
+    motion = sys.argv[3] if len(sys.argv) > 3 else MOTION   # 可选：覆盖动作/表情 prompt
     if not src.exists():
         sys.exit(f"输入图不存在: {src}")
 
@@ -38,7 +39,7 @@ def main():
     # 传 file:// 本地路径，SDK 自动上传到 DashScope OSS 并解析
     img = f"file://{src.resolve()}"
     print(f"[i2v] {I2V_MODEL} 自动上传本地图并生成 …（约 3-5 分钟）")
-    rsp = VideoSynthesis.call(model=I2V_MODEL, prompt=MOTION, img_url=img)
+    rsp = VideoSynthesis.call(model=I2V_MODEL, prompt=motion, img_url=img)
     if rsp.status_code != 200:
         sys.exit(f"❌ 图生视频失败 code={rsp.code} msg={rsp.message}")
     url = rsp.output.video_url

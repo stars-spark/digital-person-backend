@@ -36,11 +36,11 @@ def _directive_with_context(intent: Intent, scenic_id: str) -> str:
     return directive
 
 SCENIC_CONFIG: dict[str, dict] = {
-    "lingshan":  {"name": "灵山胜境",   "guide_name": "灵山小慧"},
-    "nihuawan":  {"name": "拈花湾",     "guide_name": "拈花小语"},
-    "xihu":      {"name": "西湖",       "guide_name": "西湖小雨"},
-    "huangshan": {"name": "黄山",       "guide_name": "黄山小峰"},
-    "gugong":    {"name": "故宫博物院", "guide_name": "故宫小明"},
+    "lingshan":  {"name": "灵山胜境",   "guide_name": "慧昭"},
+    "nihuawan":  {"name": "拈花湾",     "guide_name": "禅悦"},
+    "xihu":      {"name": "西湖",       "guide_name": "婉清"},
+    "huangshan": {"name": "黄山",       "guide_name": "云松"},
+    "gugong":    {"name": "故宫博物院", "guide_name": "瑾瑜"},
 }
 
 
