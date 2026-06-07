@@ -128,8 +128,9 @@ async def live_ask(body: AskIn):
                         "text": text,
                         "type": "echo",
                         "interrupt": interrupt,
-                        # emotion 透传：edge-TTS 暂不读，换 CosyVoice/Azure 后可用于情感语调
-                        "tts": {"ref_file": voice, "emotion": emotion},
+                        # ref_file=Qwen音色名(qwentts用); scenic_id=景区(ttsbackend用→队友CosyVoice景区专属音色);
+                        # emotion 透传→数字人切表情底座
+                        "tts": {"ref_file": voice, "emotion": emotion, "scenic_id": body.scenic_id},
                     },
                     timeout=10,
                 )
@@ -227,7 +228,7 @@ async def live_say(body: SayIn):
                     "text": text,
                     "type": "echo",
                     "interrupt": body.interrupt,
-                    "tts": {"ref_file": voice, "emotion": body.emotion},
+                    "tts": {"ref_file": voice, "emotion": body.emotion, "scenic_id": body.scenic_id},
                 },
                 timeout=15,
             )

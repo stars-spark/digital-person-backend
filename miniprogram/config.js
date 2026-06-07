@@ -12,8 +12,9 @@ const LAN_HOST = 'localhost';
 
 module.exports = {
   LAN_HOST,
-  BACKEND: `http://${LAN_HOST}:8000`,   // /trip/* /asr /chat/image /digital-human/config
-  BRIDGE: `http://${LAN_HOST}:9000`,    // /live/ask /live/say /live/health
+  BACKEND: `http://${LAN_HOST}:8000`,       // /trip/* /chat/image /digital-human/config
+  BRIDGE: `http://${LAN_HOST}:9000`,        // /live/ask /live/say /live/health
+  TTS_BACKEND: `http://${LAN_HOST}:8001`,   // 队友语音服务：/api/speech/asr（Paraformer）/api/speech/tts
   // SRS 的 HLS 直播地址（数字人连续画面）。需 deploy/srs.conf 开启 HLS。
   HLS: `http://${LAN_HOST}:8080/live/livestream.m3u8`,
   // LiveTalking RTMP 单路固定会话 ID（与 app.html 一致）

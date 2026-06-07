@@ -73,5 +73,6 @@ module.exports = {
   greeting: (scenic_id, group_type) => get(cfg.BACKEND, '/trip/greeting', { scenic_id, group_type }),
   tripSummary: (session_id, scenic_id) => get(cfg.BACKEND, '/trip/summary', { session_id, scenic_id }),
   chatImage: (body) => post(cfg.BACKEND, '/chat/image', body, 40000),
-  asr: (filePath, scenic_id) => upload(cfg.BACKEND, '/asr', filePath, 'file', { scenic_id }),
+  // 语音识别：队友 Paraformer ASR（景区术语纠错内置），字段名 audio，language=auto
+  asr: (filePath) => upload(cfg.TTS_BACKEND, '/api/speech/asr', filePath, 'audio', { language: 'auto' }),
 };
