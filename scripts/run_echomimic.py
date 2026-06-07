@@ -13,6 +13,7 @@ PORTRAIT = sys.argv[1] if len(sys.argv) > 1 else "sweet_bob_portrait.png"
 AUDIO    = sys.argv[2] if len(sys.argv) > 2 else "hero_short.wav"
 OUT      = Path(sys.argv[3]) if len(sys.argv) > 3 else Path("/tmp/echomimic_hero.mp4")
 PVL      = int(sys.argv[4]) if len(sys.argv) > 4 else 65   # 11.6G 用 65；够则升 97
+LENGTH   = int(sys.argv[5]) if len(sys.argv) > 5 else 251  # 生成帧数上限（25fps）→ ≥ 音频时长*25
 
 # 神态对标：让全脸扩散往"端庄女主播、温和浅笑、看镜头、头稳"方向走
 PROMPT = ("A professional female news anchor speaking to the camera, calm and warm, "
@@ -38,7 +39,7 @@ def build_graph(seed):
                  "info": ["20", 1], "image": ["8", 0], "audio": ["9", 0],
                  "prompt": PROMPT, "negative_prompt": NEG, "pose_dir": "pose_01",
                  "width": 512, "height": 768, "fps": 25.0,
-                 "facemask_ratio": 0.1, "facecrop_ratio": 0.8, "length": 251,
+                 "facemask_ratio": 0.1, "facecrop_ratio": 0.8, "length": LENGTH,
                  "partial_video_length": PVL, "draw_mouse": False, "motion_sync_": False,
                  "clip": ["5", 0], "clip_vision": ["15", 0]}},
         "21": {"class_type": "Echo_Sampler", "inputs": {

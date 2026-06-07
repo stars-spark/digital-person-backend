@@ -83,6 +83,14 @@ def talk_ui():
     return FileResponse(p, media_type="text/html")
 
 
+@app.get("/app", include_in_schema=False)
+def guest_app():
+    """游客端正式 UI（东方禅意主题）：全屏数字人 + 多模态(语音/拍照/文字) +
+    主动迎宾 + 同行人格切换 + 个性化推荐 + 行程游记。赛题「游客交互端」交付页。"""
+    p = Path(__file__).resolve().parent.parent / "app.html"
+    return FileResponse(p, media_type="text/html")
+
+
 @app.get("/dashboard", include_in_schema=False)
 def dashboard_ui():
     """运营数据大屏（ECharts 可视化 analytics + 实时客流热度）。"""

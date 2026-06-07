@@ -43,12 +43,12 @@ SRS_FLV = os.environ.get("SRS_FLV", "http://localhost:8080/live/livestream.flv")
 # Qwen3-TTS-Flash-Realtime：云端实时合成、0 本地 GPU、用现有 DASHSCOPE_API_KEY，
 # 自然度远胜 edge-TTS。音色按消息可切（qwentts 检测到 ref_file 变化即重连换音色）。
 VOICE_MAP = {
-    "voice_gentle_f": "Cherry",   # 温柔女声（默认）
-    "voice_lively_f": "Cherry",   # 活泼女声（暂同，Qwen 音色库可再细分）
+    "voice_gentle_f": "Serena",   # 知性温柔女声（默认，慧昭人设——Cherry 偏嫩已弃用）
+    "voice_lively_f": "Cherry",   # 活泼女声（保留甜美系，按形象可切）
     "voice_calm_m":   "Ethan",    # 沉稳男声
     "voice_bright_m": "Ethan",    # 明朗男声
 }
-DEFAULT_VOICE = "Cherry"
+DEFAULT_VOICE = "Serena"
 
 # avatar_id → 真实 LiveTalking avatar 目录名（data/avatars/<id>）
 # 古风女导游 guofeng_female 由通义万相生成（scripts/gen_avatar_asset.py）→ genavatar 烘成。

@@ -339,6 +339,13 @@ open http://116.62.136.211:8000/docs
 - [x] **EchoMimic V3 离线全脸扩散英雄镜头（2026-06-07，本地 4080 跑通）**：分帧差分**实锤** MuseTalk"活嘴死脸"是架构天花板（整脸只有嘴部一小块动）→ 决策：**直播保 MuseTalk（<5s 实时硬指标），演示视频改用 EchoMimic V3 flash 离线渲染英雄镜头**（单图+音频→整脸都动、无死脸）。本地 `~/Desktop/ComfyUI`+`comfy_venv` 跑通：512×768/4.5s/256s/无 OOM；差分图证整脸轮廓全动。**关键配方/踩坑见 [[echomimic-hero-pipeline]] 记忆**（模型 15.8G 放 AI_Local symlink 进 ComfyUI；依赖地狱修复 mediapipe残缺wheel/transformers4.49/diffusers0.33/补dist模块/mmgp/config键；务必 `use_mmgp=None`+`block_offload` 避开 inference_mode 量化冲突；`partial_video_length=65`；ComfyUI 重启用精确 kill 非 pkill）。脚本 `scripts/run_echomimic.py`（驱动）+`scripts/gen_tts_wav.py`（Qwen-TTS 出旁白 wav）。⚠️离线非实时，只用于演示视频固定台词，不替直播
 - [ ] **EchoMimic 后续**：出完整 10.5s 慧昭开场白 + 多套金句镜头 → 剪进 7 分钟演示视频；可选试 768×768 提画质
 
+### 游客端微信小程序（2026-06-07 起，用户拍板：用户端用小程序做）
+- [~] **个人号原生小程序**（`miniprogram/`，纯自研 WXSS、零构建）：坐实赛题「小程序」形态 + 原生 `wx.getRecorderManager`/`wx.chooseMedia` 解决 H5「局域网 http 禁麦」。设计思想见 [[miniprogram-design]] 记忆 + 计划 `~/.claude/plans/distributed-popping-steele.md`。
+  - **数字人画面 = HLS `<video>`**（个人号禁 web-view/live-player，唯一可用直播路径）：复用现有 LiveTalking(RTMP)→SRS，**后端唯一改动 = `deploy/srs.conf` 开 HLS**；桥接/RAG 零改动。`wx.request` 无 SSE 正好契合（`/live/ask` 返回整段 JSON）。native 无 CORS，同 WiFi 直连 LAN IP，三 base 在 `config.js` 一处配（8000/9000/8080）。
+  - **放弃 TDesign**（本机无 Node、对 beginner 构建友好性差、与沉浸式 hero 冲突）→ 纯自研 WXSS + 微信官方设计规范。"成熟非 demo" = 设计 token（`app.wxss`）+ 完成度清单（自定义沉浸导航/骨架屏/三态降级/触感/安全区/过渡/打字机）。
+  - Linux 跑 DevTools 用 `msojocs/wechat-web-devtools-linux`。⚠️ `project.config.json` 的 appid 现为 `touristappid` 占位，真机+录音需换**用户个人号 AppID**。
+  - 进度：脚手架✅（config/app/api/设计token）；待做：主交互页(封面/hero/输入坞/字幕)、三模态接线、迎宾/游记、SRS HLS 联调真机验证。
+
 ### 联调 & 交付材料
 - [~] LiveTalking 端到端联调：**本地全栈跑通**（LiveTalking RTMP:8010 + SRS docker + RAG cloud:8000(0显存) + 桥接:9000 + 交互页 /talk），黑屏/OOM 均已修。**待亲眼验证**古风导游开口 + 手机真机「问→开口」<5s（任务 #9，停在"加载中"未等到画面）
 - [ ] 把占位 avatar/voice ID 接到真实资源：avatar 已接（guofeng_female），voice 仍 edge-TTS 占位，待换 CosyVoice
@@ -417,9 +424,10 @@ cd ~/Desktop/LiveTalking && unset ALL_PROXY all_proxy HTTP_PROXY http_proxy HTTP
 DASHSCOPE_API_KEY=$(grep DASHSCOPE_API_KEY ~/Desktop/Digital_Person/.env | cut -d= -f2) \
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   ~/miniconda3/envs/livetalking/bin/python app.py --transport rtmp --model musetalk \
-  --avatar_id guofeng_female --batch_size 4 --tts qwentts --REF_FILE Cherry \
+  --avatar_id sweet_bob --batch_size 4 --tts qwentts --REF_FILE Serena \
   --push_url 'rtmp://localhost/live/livestream'
-# 注：--tts qwentts 需 livetalking 环境装 dashscope>=1.25.11；音色 Cherry(女)/Ethan(男)等 Qwen 系统音色
+# 注：--tts qwentts 需 livetalking 环境装 dashscope>=1.25.11；音色 Serena(知性温柔女声=慧昭默认，Cherry 偏嫩已弃)/Ethan(男)等 Qwen 系统音色
+# 注：主 avatar 为 sweet_bob（含情绪底座 sweet_bob_happy/_concerned，按 [情绪:X] 热切换）
 
 # ③ RAG 后端（cloud 模式，0 显存，0.0.0.0 让手机可访问）
 cd ~/Desktop/Digital_Person && DEPLOY_MODE=cloud .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
