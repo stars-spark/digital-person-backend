@@ -36,6 +36,19 @@ async def lifespan(app: FastAPI):
         print("本地模型预热完成，服务就绪")
     else:
         print("云端模式（DashScope），服务就绪")
+
+    # 后台预热客流统计：读 14 万行 xlsx 约 10~20s（openpyxl 慢），
+    # 不预热的话首个 navigation/recommend 请求会被这次冷加载冻住整整 20s。
+    # 放后台线程，不阻塞启动，等首个用户提问时缓存已热。
+    import threading
+    def _prewarm_crowd():
+        try:
+            from backend.analytics.crowd import _stats
+            _stats()
+            print("客流统计预热完成")
+        except Exception as e:  # 缺 xlsx/pandas 不致命，导游不带客流上下文即可
+            print(f"客流统计预热跳过: {type(e).__name__}: {e}")
+    threading.Thread(target=_prewarm_crowd, daemon=True).start()
     yield
 
 

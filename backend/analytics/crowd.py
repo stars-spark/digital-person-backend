@@ -53,7 +53,11 @@ def _level(index: float) -> str:
 @lru_cache(maxsize=1)
 def _stats() -> dict:
     """读一次 xlsx，缓存：每景点的访问量/满意度/停留/月度分布。"""
-    df = pd.read_excel(_DATA)
+    # 只读需要的列，明显加快 14 万行 xlsx 的冷加载（openpyxl 逐格解析很慢）
+    df = pd.read_excel(
+        _DATA,
+        usecols=["attraction_name", "satisfaction", "stay_duration", "visit_date"],
+    )
     g = df.groupby("attraction_name")
     pop = g.size()
     pop_norm = (pop / pop.max()).round(3)

@@ -7,7 +7,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 class Settings(BaseSettings):
     # DashScope (通义千问)
     dashscope_api_key: str = ""
-    llm_model: str = "qwen-max"
+    # qa（事实问答）用模型。qwen-plus 比 qwen-max 生成快 ~2 倍（48 vs 20 字/s），
+    # 流式首句从 ~3s 降到 ~1.2s，是压住语音端到端 <5s 的关键；44 题准确率 100%
+    # （keyword 自测），事实由 RAG context 约束，质量足够。生成性意图另走 qwen-turbo。
+    llm_model: str = "qwen-plus"
     vl_model: str = "qwen-vl-max"
 
     # 部署模式：local（本地GPU）或 cloud（阿里云，用DashScope Embedding）
