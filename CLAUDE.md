@@ -294,6 +294,7 @@ open http://116.62.136.211:8000/docs
 - [x] 3 个扩展景区数据文档生成（西湖/黄山/故宫）
 - [x] 5 个景区全部入库（lingshan/nihuawan/xihu/huangshan/gugong）
 - [x] **准确率测试：97.7%**（44题；灵山90%，西湖/黄山/故宫各100%）
+- [x] **再扩 3 个异构景区（2026-06-10，验证"换库不换码"）**：`scripts/gen_scenic_docs.py` 仿题目版式生成真实知识库文档（游览指南 + 11 列结构化数据集），主题刻意分散——张家界(自然地质)/兵马俑(考古)/莫高窟(石窟艺术)。cloud 模式入库（DashScope text-embedding-v3，与现有同向量空间）：`scenic_zhangjiajie`(19)/`scenic_bingmayong`(18)/`scenic_mogaoku`(19)。仅加数据 + `SCENIC_CONFIG`(导游 岚溪/秦韵/妙音) + `env_context.SCENIC_CITY`(张家界/西安/敦煌)两处配置项，**零新代码路径**，现有 `/chat` 全链路直接支持。抽测 **15/15=100%**。客流数据不在行为 xlsx 中→`crowd_brief` 优雅返回空（不编假客流）。**景区总数 5→8**
 
 ### 接口层
 - [x] `POST /chat`（同步 + SSE 流式，含 emotion/sentence/end 事件）

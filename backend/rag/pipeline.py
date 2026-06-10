@@ -25,6 +25,11 @@ from backend.analytics.env_context import env_brief
 # 路线/推荐意图才注入实时客流 + 时间天气，让导游给「错峰/避暑/带伞」等随机应变建议
 _CROWD_INTENTS = {Intent.NAVIGATION, Intent.RECOMMEND}
 
+# 按意图选模型：qa（事实问答）守 qwen-max 保 97.7% 准确率；其余生成性意图
+# （路线/推荐/安抚/闲聊）切 qwen-turbo——事实已由注入的 RAG context 约束，生成质量足够，
+# 而整段 LLM 时延实测 28s→4s（16→69 字/s）。这些意图不在准确率测试集范畴，不影响硬指标。
+_FAST_INTENTS = {Intent.NAVIGATION, Intent.RECOMMEND, Intent.EMPATHY, Intent.CHITCHAT}
+
 
 def _directive_with_context(intent: Intent, scenic_id: str) -> str:
     """意图指令 +（路线/推荐时）实时客流 + 时间天气环境上下文。"""
@@ -36,11 +41,14 @@ def _directive_with_context(intent: Intent, scenic_id: str) -> str:
     return directive
 
 SCENIC_CONFIG: dict[str, dict] = {
-    "lingshan":  {"name": "灵山胜境",   "guide_name": "慧昭"},
-    "nihuawan":  {"name": "拈花湾",     "guide_name": "禅悦"},
-    "xihu":      {"name": "西湖",       "guide_name": "婉清"},
-    "huangshan": {"name": "黄山",       "guide_name": "云松"},
-    "gugong":    {"name": "故宫博物院", "guide_name": "瑾瑜"},
+    "lingshan":    {"name": "灵山胜境",           "guide_name": "慧昭"},
+    "nihuawan":    {"name": "拈花湾",             "guide_name": "禅悦"},
+    "xihu":        {"name": "西湖",               "guide_name": "婉清"},
+    "huangshan":   {"name": "黄山",               "guide_name": "云松"},
+    "gugong":      {"name": "故宫博物院",         "guide_name": "瑾瑜"},
+    "zhangjiajie": {"name": "张家界国家森林公园", "guide_name": "岚溪"},
+    "bingmayong":  {"name": "秦始皇帝陵博物院",   "guide_name": "秦韵"},
+    "mogaoku":     {"name": "敦煌莫高窟",         "guide_name": "妙音"},
 }
 
 
@@ -84,6 +92,7 @@ def answer(
     # 按 人格 + 语言 隔离缓存，避免跨人格/跨语种串答
     cache_query = f"{group_type}::{lang}::{query}"
     intent = classify(query, history)  # Orchestrator 分派：决定走哪条处理链路
+    fast = fast or intent in _FAST_INTENTS  # 生成性意图自动提速（qwen-turbo）
     # 路线/推荐含实时客流（随时段变），不缓存，避免冻结错峰建议
     cacheable = not history and intent not in _CROWD_INTENTS
 
@@ -165,6 +174,7 @@ async def answer_stream(
     history = history or []
     cache_query = f"{group_type}::{lang}::{query}"  # 按 人格+语言 隔离缓存
     intent = classify(query, history)  # 先分派；无历史时纯规则匹配，0ms
+    fast = fast or intent in _FAST_INTENTS  # 生成性意图自动提速（qwen-turbo）
     cacheable = not history and intent not in _CROWD_INTENTS  # 含实时客流的不缓存
 
     def _intent_event() -> dict:

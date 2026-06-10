@@ -19,6 +19,9 @@ SCENIC_CITY = {
     "xihu": "杭州",
     "huangshan": "黄山",
     "gugong": "北京",
+    "zhangjiajie": "张家界",
+    "bingmayong": "西安",
+    "mogaoku": "敦煌",
 }
 
 # wttr.in 英文天气描述 → 中文（覆盖常见项；未命中则保留原文）
@@ -28,6 +31,8 @@ _COND_CN = {
     "Patchy rain possible": "可能有雨", "Light rain": "小雨", "Moderate rain": "中雨",
     "Heavy rain": "大雨", "Light drizzle": "毛毛雨", "Thundery outbreaks possible": "可能有雷阵雨",
     "Light snow": "小雪", "Moderate snow": "中雪", "Heavy snow": "大雪", "Patchy snow nearby": "局部有雪",
+    "Haze": "雾霾", "Smoky haze": "雾霾", "Smoke": "烟霾", "Patchy light rain": "局部小雨",
+    "Light rain shower": "阵雨", "Moderate or heavy rain shower": "大阵雨", "Blowing dust": "浮尘",
 }
 
 _CACHE: dict[str, tuple[float, str | None]] = {}   # city -> (ts, "中文天气 温度℃" 或 None)
