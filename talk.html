@@ -160,7 +160,9 @@ async function toggleVoice(){
   const an=audioCtx.createAnalyser(); an.fftSize=512; src.connect(an);
   const buf=new Uint8Array(an.fftSize);
   // 阈值与时序（演示环境调过的经验值）
-  const VOICE_TH=0.018, MIN_SPEECH=300, SILENCE_HOLD=800, MAX_MS=12000;
+  // SILENCE_HOLD：说完静音多久判定一句结束。500ms 省 ~0.3s 端到端延迟，
+  // 适合游客短问句；若出现「话没说完被打断」，调回 650~800。
+  const VOICE_TH=0.018, MIN_SPEECH=300, SILENCE_HOLD=500, MAX_MS=12000;
   let spoke=false, speechStart=0, lastVoice=performance.now(), t0=performance.now();
   function loop(){
     if(micState==='idle') return;
