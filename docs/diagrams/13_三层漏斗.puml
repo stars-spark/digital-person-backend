@@ -1,0 +1,17 @@
+@startuml 13_三层漏斗
+!include _style.puml
+
+start
+:游客提问;
+if (① 高频问答缓存命中？) then (是)
+  :播放预渲染数字人视频\n0 GPU、0 LLM、<0.5s\n（吃掉大部分请求）;
+else (否)
+  if (② GPU 池有空闲渲染槽？) then (是)
+    :抢占渲染槽，实时驱动\n占 1 路、说完即放、<5s 开口\n（长尾与个性化问答）;
+  else (否，或数字人离线)
+    :③ 满载降级兜底\n先秒回文字或语音答\n（突发高峰，绝不卡）;
+  endif
+endif
+:人人 <5s 得到答复;
+stop
+@enduml

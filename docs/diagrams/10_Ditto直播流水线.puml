@@ -1,0 +1,22 @@
+@startuml 10_Ditto直播流水线
+!include _style.puml
+
+queue "音频帧队列\n(20ms/帧；无语音时注入静音帧)" as Q
+
+rectangle "Qwen-TTS Realtime\n输出 16kHz 音频流" as TTS
+rectangle "feeder 线程\n6480 样本滑动窗口 → SDK 推理\nSDK 内部队列背压：生产快于消费即自动阻塞" as F
+rectangle "Ditto SDK\n运动扩散 + 隐式关键点 warp\n渲染出帧" as SDK
+rectangle "emitter 线程\n每帧画面与对应音频逐帧配对\n→ RTMP 推流" as E
+rectangle "SRS → HTTP-FLV / HLS → 前端" as OUT
+
+TTS --> Q
+Q --> F
+F --> SDK
+SDK --> E
+E --> OUT
+
+note bottom of F
+  静音也喂给模型 → Ditto 自生成待机微动
+  (呼吸、眨眼、头部微动)，无需 idle 底座
+end note
+@enduml

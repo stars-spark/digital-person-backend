@@ -1,0 +1,41 @@
+@startuml 07_用例图
+!include _style.puml
+left to right direction
+
+actor "游客" as T
+actor "景区管理方" as M
+
+rectangle "景区导览 AI 数字人系统" {
+  usecase "文本提问" as U1
+  usecase "语音提问" as U2
+  usecase "拍照视觉定位" as U3
+  usecase "听个性化讲解" as U4
+  usecase "获取路线推荐\n(含错峰建议)" as U5
+  usecase "情绪安抚关怀" as U6
+  usecase "查看行程游记" as U7
+  usecase "被主动迎宾" as U8
+
+  usecase "知识库管理\n(上传/更新/删除)" as A1
+  usecase "数字人形象配置\n(换装/音色)" as A2
+  usecase "查看数据大屏" as A3
+  usecase "查看感受度报告" as A4
+  usecase "接收负面情绪/突发预警" as A5
+}
+
+T --> U1
+T --> U2
+T --> U3
+T --> U4
+T --> U5
+T --> U6
+T --> U7
+T --> U8
+
+M --> A1
+M --> A2
+M --> A3
+M --> A4
+M --> A5
+
+U4 ..> U1 : <<extend>>\n按 group_type 差异化
+@enduml

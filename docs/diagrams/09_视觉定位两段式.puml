@@ -1,0 +1,32 @@
+@startuml 09_视觉定位两段式
+!include _style.puml
+
+start
+:游客拍摄景物照片\nPOST /chat/image;
+
+partition "第一段 · 视觉认地标（qwen-vl-max）" {
+  :任务严格限定为「只识别地标」\n输出 [位置:X];
+  if (识别置信充足?) then (是)
+    :锚定位置 X\n（如「大佛广场」）;
+  else (否)
+    :不武断定位\n→ 转通用引导;
+    stop
+  endif
+}
+
+partition "第二段 · RAG 接地讲解（知识库约束）" {
+  :以位置 X 为锚点喂回 RAG\n走 navigation 意图;
+  :知识库检索该景点事实\n（典故 / 周边动线）;
+  :复用 group_type 人格\n生成讲解 + 指路;
+}
+
+:数字人开口：\n「您在大佛广场，这尊大佛……\n往东 200 米是九龙灌浴」;
+stop
+
+note right
+  设计要点：视觉只做「认」，
+  知识交还受约束的 RAG，
+  把幻觉挡在讲解之前
+  （事实必须有来源，呼应 §4.1）
+end note
+@enduml

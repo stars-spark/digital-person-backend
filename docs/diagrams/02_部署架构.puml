@@ -1,0 +1,33 @@
+@startuml 02_部署架构
+!include _style.puml
+
+node "手机（同 WiFi 或公网 HTTPS 网关）" as PHONE {
+  [手机浏览器\niOS HLS / 安卓 FLV] as WEB
+}
+
+node "GPU 主机（本地演示 / 云端 GPU 节点）" as HOST {
+  [桥接层（统一入口）] as BR
+  [RAG 后端\n云端嵌入（0 显存）] as RAG
+  [LiveTalking + Ditto\n全脸实时驱动] as LT
+  [SRS 媒体服务器\nRTMP / FLV / HLS] as SRS
+}
+
+node "无卡云服务器（可选拆分）" as CARDLESS {
+  [逻辑后端\n低成本公网 API] as CLRAG
+}
+
+cloud "云端大模型与嵌入服务" as DS {
+  [问答 / 嵌入 / 语音合成] as DSC
+}
+
+WEB --> BR : 提问
+WEB <-- SRS : 数字人视频流
+BR --> RAG
+BR --> LT
+LT --> SRS : RTMP 推流
+RAG ..> DSC
+CLRAG ..> DSC
+
+note bottom of HOST : 单台 GPU 节点即可独立支撑全栈；\n本地演示走同 WiFi，云端部署经统一网关对外。
+note bottom of CARDLESS : 规模化时逻辑后端可拆到无卡云常驻，\n仅 GPU 渲染留在 GPU 节点。
+@enduml

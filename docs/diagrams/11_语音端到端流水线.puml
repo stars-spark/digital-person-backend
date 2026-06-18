@@ -1,0 +1,20 @@
+@startuml 11_语音端到端流水线
+!include _style.puml
+
+start
+:用户说完;
+:① VAD 静音判定　0.8s;
+:② ASR 语音转文字　约 1.0s;
+:③ RAG 检索　0.3–1.2s;
+:④ LLM 首句流式生成　1.0–1.5s（优化后）;
+:⑤ TTS 首块合成　约 0.35s;
+:⑥ 数字人首帧渲染　0.72s（Ditto 全脸）;
+:数字人开口;
+stop
+
+note right
+  串行链路：总延迟 = 各段之和
+  ③ 检索与 ④ 生成由我方掌控，为优化主战场
+  端到端约 4.7s，满足 5s 红线
+end note
+@enduml
