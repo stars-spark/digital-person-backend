@@ -22,8 +22,11 @@ import AvatarSheet from '@/components/AvatarSheet'
 import Postcard from '@/components/Postcard'
 import HistorySheet from '@/components/HistorySheet'
 import RouteMapSheet from '@/components/RouteMapSheet'
+import ForYouSection from '@/components/ForYouSection'
+import ProfileSheet from '@/components/ProfileSheet'
 import { MetaRow } from '@/components/MetaPills'
 import { SCENIC_ROUTES } from '@/lib/routeData'
+import type { RecoCard } from '@/lib/api'
 import { load as loadTrace } from '@/lib/trace'
 import { loadDarkMode, applyDarkMode } from '@/lib/theme'
 import type { DarkMode } from '@/lib/theme'
@@ -57,10 +60,28 @@ export default function App() {
   const [postcardOpen, setPostcardOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [routeMapOpen, setRouteMapOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   // 「跟我游」：有地图路线数据的景区 → 开地图版；否则回退清单版 TourSheet
   const openGuide = () => {
     if (SCENIC_ROUTES[g.scenic]) { g.track('feature_open', { feature: 'routemap' }); setRouteMapOpen(true) }
     else openFeature('tour', setTourOpen)
+  }
+  // 「为你定制」：进入主页 + 画像（景区/同行人/兴趣）变化时拉取个性化推荐
+  useEffect(() => {
+    if (onboarded) g.loadRecos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboarded, g.scenic, g.groupType, g.interests])
+  // 推荐卡曝光埋点（两端共用：管理端大屏「推荐效果」据此聚合）
+  useEffect(() => {
+    if (g.recos.length > 0) g.track('reco_impression', { count: g.recos.length })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [g.recos])
+  // 点推荐卡：埋点 + 按 action 路由（问导游 / 开跟我游 / 开设施）
+  const handleReco = (c: RecoCard) => {
+    g.track('reco_click', { title: c.title, action: c.action })
+    if (c.action === 'route') openGuide()
+    else if (c.action === 'facility') openFeature('facility', setFacOpen)
+    else g.ask(c.query || c.title)
   }
   const connected = g.status === 'connected'
   const t = makeT(g.lang)
@@ -258,6 +279,10 @@ export default function App() {
         {/* 今日游园建议卡 */}
         <TodayCard scenic={g.scenic} label={{ today: t('today'), tip: t('today_tip') }} />
 
+        {/* 为你定制（个性化推荐区） */}
+        <ForYouSection cards={g.recos} basis={g.recoBasis} loading={g.recosLoading} onCard={handleReco}
+          onEditProfile={() => { g.track('feature_open', { feature: 'profile' }); setProfileOpen(true) }} />
+
         {/* 快捷功能 */}
         <div className="grid grid-cols-4 gap-2">
           <QuickAction icon={<Compass className="size-[18px]" weight="duotone" />} label={t('qf_tour')} onClick={openGuide} />
@@ -341,6 +366,11 @@ export default function App() {
       <Postcard open={postcardOpen} onClose={() => setPostcardOpen(false)} scenic={g.scenic} scenicName={scenicName} guideName={g.guideName} trace={g.trace} />
       <HistorySheet open={historyOpen} onOpenChange={setHistoryOpen} messages={g.messages} />
       <RouteMapSheet open={routeMapOpen} onOpenChange={setRouteMapOpen} route={SCENIC_ROUTES[g.scenic]} onAsk={(q) => g.ask(q)} />
+      <ProfileSheet
+        open={profileOpen} onOpenChange={setProfileOpen} lang={g.lang}
+        groupType={g.groupType} setGroupType={g.setGroupType}
+        interests={g.interests} setInterests={g.setInterests}
+      />
     </div>
   )
 }

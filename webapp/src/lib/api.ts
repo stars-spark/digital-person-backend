@@ -206,3 +206,26 @@ export async function checkin(body: {
   })
   return { ok: r.ok, data: await r.json() }
 }
+
+// 个性化推荐「为你定制」（后端 /recommend）：画像×兴趣×此刻 → 带依据的推荐卡
+export interface RecoCard {
+  icon: string
+  title: string
+  reason: string
+  basis: string[]
+  action: 'ask' | 'route' | 'facility'
+  query?: string | null
+}
+export async function recommend(body: {
+  scenic: string; groupType: string; interests: string[]; lang?: string
+}): Promise<{ cards: RecoCard[]; basis: string[] }> {
+  try {
+    const r = await fetch('/rag/recommend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenic_id: body.scenic, group_type: body.groupType, interests: body.interests, lang: body.lang || 'zh' }),
+    })
+    if (!r.ok) return { cards: [], basis: [] }
+    return await r.json()
+  } catch { return { cards: [], basis: [] } }
+}

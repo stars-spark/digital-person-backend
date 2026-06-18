@@ -103,7 +103,25 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
   useEffect(() => { groupRef.current = groupType }, [groupType])
   const langRef = useRef(lang)
   useEffect(() => { langRef.current = lang }, [lang])
+  const interestsRef = useRef(interests)
+  useEffect(() => { interestsRef.current = interests }, [interests])
   const backendLang = () => (LANGS.find((l) => l.id === langRef.current)?.backend || 'auto')
+
+  // ── 个性化推荐「为你定制」：画像×兴趣×此刻 → 推荐卡（loadRecos 稳定，读 ref 取最新画像）──
+  const [recos, setRecos] = useState<api.RecoCard[]>([])
+  const [recoBasis, setRecoBasis] = useState<string[]>([])
+  const [recosLoading, setRecosLoading] = useState(false)
+  const recoSeqRef = useRef(0)
+  const loadRecos = useCallback(async () => {
+    const seq = ++recoSeqRef.current
+    setRecosLoading(true)
+    try {
+      const r = await api.recommend({ scenic: scenicRef.current, groupType: groupRef.current, interests: interestsRef.current, lang: backendLang() })
+      if (seq !== recoSeqRef.current) return       // 被更新的画像取代 → 丢弃旧结果
+      setRecos(r.cards); setRecoBasis(r.basis)
+    } catch { if (seq === recoSeqRef.current) setRecos([]) }
+    finally { if (seq === recoSeqRef.current) setRecosLoading(false) }
+  }, [])
   // 绑定当前景区/画像的埋点上报（供 App 调用）
   const track = useCallback((type: string, payload?: Record<string, unknown>) =>
     trackEvent(type, { scenic: scenicRef.current, groupType: groupRef.current, lang: langRef.current }, payload), [])
@@ -499,6 +517,7 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
     trace: traceState, recordVisit, recordRouteDone, recordRating, track,
     clipUrl, clearClip: () => setClipUrl(''),
     caption, captionStreaming,
+    recos, recoBasis, recosLoading, loadRecos,
     connect, ask, toggleVoice, photo, isIOS,
   }
 }
