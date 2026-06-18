@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     sparse_top_k: int = 10
     rerank_top_k: int = 4
 
+    # EA-RAG 自研检索算法（Entity-Anchored Adaptive RAG）三机制开关
+    # 全部可经环境变量覆盖，供消融实验逐项开关
+    ea_entity_anchor: bool = True      # ① 实体锚定：query 命中景点名 → 该景点 chunk 加权
+    ea_adaptive_fusion: bool = True    # ② 自适应融合：按 query 特征动态调 dense/sparse 权重的加权 RRF
+    ea_confidence_gate: bool = True    # ③ 置信度门控：reranker top1 低于阈值 → 判定知识库无此信息
+    # 门控阈值：经 105 正常题 + 库外陷阱题标定（tests/ea_rag_stress.json），
+    # 0.2 = 库外拒答 60% 且正常题误拒 0% 的最优工作点（0.3 起出现 1% 误拒）
+    ea_gate_threshold: float = 0.2
+
     # 路径
     vector_store_dir: Path = BASE_DIR / "vector_store"
     knowledge_base_dir: Path = BASE_DIR / "knowledge_base"

@@ -12,11 +12,15 @@ from fastapi.responses import FileResponse
 
 from backend.api.chat import router as chat_router
 from backend.api.knowledge import router as kb_router
+from backend.api.kb_manage import router as kb_manage_router
 from backend.api.analytics import router as analytics_router
+from backend.api.analytics_bi import router as analytics_bi_router
 from backend.api.multimodal import router as mm_router
 from backend.api.digital_human import router as dh_router
 from backend.api.asr import router as asr_router
 from backend.api.trip import router as trip_router
+from backend.api.tour import router as tour_router
+from backend.api.theme import router as theme_router
 
 
 @asynccontextmanager
@@ -64,10 +68,14 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(mm_router)
 app.include_router(kb_router)
+app.include_router(kb_manage_router)
 app.include_router(analytics_router)
+app.include_router(analytics_bi_router)
 app.include_router(dh_router)
 app.include_router(asr_router)
 app.include_router(trip_router)
+app.include_router(tour_router)
+app.include_router(theme_router)
 
 
 @app.get("/health")

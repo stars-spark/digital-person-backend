@@ -53,7 +53,9 @@ def transcribe(audio_path: str, scenic_id: str = "lingshan",
     from backend.core.config import settings
 
     model = get_model()
-    hotwords = SCENIC_HOTWORDS.get(scenic_id, "")
+    # 景区热词是中文专名，只在中文/自动识别时注入；英文等其它语言注入会把发音带偏
+    # （如 Lingshan→Lingsang），故非中文时不加热词。
+    hotwords = SCENIC_HOTWORDS.get(scenic_id, "") if language in ("zh", "auto", None) else ""
     segments, info = model.transcribe(
         audio_path,
         language=None if language == "auto" else language,

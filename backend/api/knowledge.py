@@ -29,8 +29,23 @@ async def upload_documents(
             shutil.copyfileobj(file.file, f)
         saved_paths.append(dest)
 
-    count = index_documents(saved_paths, scenic_id)
-    return {"scenic_id": scenic_id, "files": len(saved_paths), "chunks_indexed": count}
+    # 逐文件入库 + 登记到 uploaded_docs（前端文档列表查 GET /kb/docs，得真实 chunk 数/状态）
+    from backend.db.database import get_db
+    total = 0
+    results = []
+    with get_db() as conn:
+        for p in saved_paths:
+            chunks = index_documents([p], scenic_id)   # 按后缀分派 docx/pdf/txt/md
+            total += chunks
+            status = "indexed" if chunks > 0 else "unsupported"  # 不支持的格式：存档但未入 RAG
+            size = p.stat().st_size if p.exists() else 0
+            conn.execute(
+                """INSERT INTO uploaded_docs (scenic_id, filename, size_bytes, chunks, status)
+                   VALUES (?,?,?,?,?)""",
+                (scenic_id, p.name, size, chunks, status),
+            )
+            results.append({"filename": p.name, "chunks": chunks, "status": status})
+    return {"scenic_id": scenic_id, "files": len(saved_paths), "chunks_indexed": total, "items": results}
 
 
 @router.get("/list")

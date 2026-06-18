@@ -59,3 +59,47 @@ def load_docx_as_chunks(
     paragraphs = _load_docx_paragraphs(path)
     chunks = chunk_paragraphs(paragraphs, chunk_size, overlap)
     return [{"text": c, "source": path.name} for c in chunks]
+
+
+def _load_pdf_paragraphs(path: Path) -> List[str]:
+    """逐页抽取 PDF 文本 → 段落。用 pymupdf(fitz)：中文/CID 字体抽取远胜 pypdf。
+    无文本层的 PDF（扫描件/字体轮廓化）抽不出文字 → 返回空（上传仍登记，状态标 unsupported）。"""
+    import fitz  # pymupdf
+    paragraphs: List[str] = []
+    with fitz.open(str(path)) as doc:
+        for page in doc:
+            for block in page.get_text().split("\n\n"):
+                block = " ".join(block.split())  # 压平多余空白/换行
+                if len(block.strip()) >= 2:
+                    paragraphs.append(block.strip())
+    return paragraphs
+
+
+def _load_text_paragraphs(path: Path) -> List[str]:
+    """txt/md：按空行切段落。"""
+    raw = path.read_text(encoding="utf-8", errors="ignore")
+    return [b.strip() for b in raw.split("\n\n") if b.strip()]
+
+
+# 支持的上传文档格式 → 段落抽取器
+SUPPORTED_SUFFIXES = {".docx", ".pdf", ".txt", ".md", ".markdown"}
+
+
+def load_file_as_chunks(
+    path: Path,
+    chunk_size: int = 512,
+    overlap: int = 128,
+) -> List[dict]:
+    """按后缀分派加载任意支持格式（docx/pdf/txt/md），返回 [{text, source}]。
+    不支持的格式返回空列表（上传仍登记、只是不入 RAG）。"""
+    suffix = path.suffix.lower()
+    if suffix == ".docx":
+        paragraphs = _load_docx_paragraphs(path)
+    elif suffix == ".pdf":
+        paragraphs = _load_pdf_paragraphs(path)
+    elif suffix in (".txt", ".md", ".markdown"):
+        paragraphs = _load_text_paragraphs(path)
+    else:
+        return []
+    chunks = chunk_paragraphs(paragraphs, chunk_size, overlap)
+    return [{"text": c, "source": path.name} for c in chunks]

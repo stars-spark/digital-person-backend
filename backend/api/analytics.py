@@ -6,15 +6,20 @@ GET /analytics/hot-topics      — 游客热门问题词云
 GET /analytics/sentiment-trend — 满意度按天趋势
 GET /analytics/conversations   — 历史对话列表（分页）
 POST /analytics/report         — LLM 生成游客感受度报告（按需调用）
+POST /analytics/event          — 游客端主动上报行为事件（画像/功能/到访/满意度）
+GET /analytics/profile         — 客群画像（同行类型/语言/兴趣分布）
+GET /analytics/feature-usage   — 功能使用率 + 满意度
 """
 
+import json
 from collections import Counter
 from datetime import datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.db.database import get_db
+from backend.db.database import get_db, save_event
 from backend.llm.client import chat
 from backend.analytics.crowd import scenic_crowd
 
@@ -110,6 +115,59 @@ def hot_topics(scenic_id: str = "lingshan", days: int = 7, limit: int = 10):
 
     topics = [term for term, _ in counter.most_common(limit * 3) if len(set(term)) > 1]
     return {"topics": topics[:limit]}
+
+
+# ── 2b. 话题意图分类（LLM 归类，替代 n-gram 碎片；带缓存） ──────────────
+_TOPIC_CATS = ["景点介绍", "票价咨询", "交通方式", "开放时间", "餐饮推荐",
+               "路线推荐", "设施服务", "住宿预订", "其他"]
+# 缓存：{(scenic, days): (生成时刻, 结果)}，TTL 内复用，避免每次请求都打 LLM
+_INTENT_CACHE: dict[tuple, tuple[datetime, dict]] = {}
+_INTENT_TTL = timedelta(minutes=10)
+
+
+@router.get("/topic-intents")
+def topic_intents(scenic_id: str = "lingshan", days: int = 30, limit: int = 8):
+    """游客提问的意图分类统计（LLM 归类，非 n-gram 碎片）。
+    返回 [{intent, count}]，按 count 降序。结果缓存 10 分钟。"""
+    key = (scenic_id, days)
+    now = datetime.now()
+    cached = _INTENT_CACHE.get(key)
+    if cached and now - cached[0] < _INTENT_TTL:
+        return {**cached[1], "cached": True}
+
+    since = _date_range(days)
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT user_message FROM conversations WHERE scenic_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 120",
+            (scenic_id, since),
+        ).fetchall()
+    msgs = [r["user_message"][:40] for r in rows if r["user_message"]]
+    if not msgs:
+        out = {"scenic_id": scenic_id, "period_days": days, "topics": []}
+        _INTENT_CACHE[key] = (now, out)
+        return {**out, "cached": False}
+
+    numbered = "\n".join(f"{i+1}. {m}" for i, m in enumerate(msgs))
+    sys = "你是景区数据分析师。把游客问题按主题归类并计数。只输出 JSON，不要解释。"
+    user = (
+        f"把下面 {len(msgs)} 条游客问题归入这些类别之一：{('、').join(_TOPIC_CATS)}。\n"
+        f"统计每个类别的条数，输出 JSON 对象 {{类别:条数}}（只含出现过的类别，条数之和={len(msgs)}）。\n\n{numbered}"
+    )
+    try:
+        raw = chat(sys, [], user, fast=True).strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1].lstrip("json").strip()
+        counts = json.loads(raw)
+        topics = sorted(
+            ({"intent": k, "count": int(v)} for k, v in counts.items() if int(v) > 0),
+            key=lambda x: x["count"], reverse=True,
+        )[:limit]
+    except Exception:
+        # LLM 失败兜底：返回空 topics（前端可降级用 /hot-topics 词云）
+        topics = []
+    out = {"scenic_id": scenic_id, "period_days": days, "sample_size": len(msgs), "topics": topics}
+    _INTENT_CACHE[key] = (now, out)
+    return {**out, "cached": False}
 
 
 # ── 3. 满意度趋势 ──────────────────────────────────────────────────
@@ -366,3 +424,91 @@ def generate_report(req: ReportRequest):
 
     report = chat(prompt, [], "请生成报告")
     return {"scenic_id": req.scenic_id, "period_days": req.days, "report": report}
+
+
+# ══════════════════════════════════════════════════════════════════
+# 游客端「主动上报」半边：服务端从对话里看不到的信号（画像/功能/位置/满意度）
+# ══════════════════════════════════════════════════════════════════
+
+class EventIn(BaseModel):
+    session_id: str
+    scenic_id: str = "lingshan"
+    type: str                              # session_start / feature_open / station_visit / photo_locate / milestone / session_end / rating
+    group_type: str | None = None          # 画像：随 session_start 带
+    lang: str | None = None
+    payload: dict[str, Any] | None = None   # 随 type 不同的附加字段
+
+
+@router.post("/event")
+def ingest_event(e: EventIn):
+    """游客端上报一条行为事件。容错落库，永不把错误抛回前端（埋点不能影响体验）。"""
+    save_event(e.session_id, e.scenic_id, e.type, e.group_type, e.lang, e.payload)
+    return {"ok": True}
+
+
+def _payload(row) -> dict:
+    try:
+        return json.loads(row["payload"]) if row["payload"] else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+@router.get("/profile")
+def profile(scenic_id: str = "lingshan", days: int = 7):
+    """客群画像：同行类型 / 语言 / 兴趣 分布（来自 session_start 事件）。"""
+    since = _date_range(days)
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT group_type, lang, payload FROM events "
+            "WHERE scenic_id=? AND type='session_start' AND created_at>=?",
+            (scenic_id, since),
+        ).fetchall()
+    groups, langs, interests = Counter(), Counter(), Counter()
+    for r in rows:
+        if r["group_type"]:
+            groups[r["group_type"]] += 1
+        if r["lang"]:
+            langs[r["lang"]] += 1
+        for it in (_payload(r).get("interests") or []):
+            interests[it] += 1
+    return {
+        "scenic_id": scenic_id,
+        "period_days": days,
+        "total_visitors": len(rows),
+        "group_type": dict(groups),
+        "lang": dict(langs),
+        "interests": dict(interests.most_common(10)),
+    }
+
+
+@router.get("/feature-usage")
+def feature_usage(scenic_id: str = "lingshan", days: int = 7):
+    """功能使用率（feature_open 计数）+ 满意度（rating 均分）+ 活跃会话数。"""
+    since = _date_range(days)
+    with get_db() as conn:
+        feats = conn.execute(
+            "SELECT payload FROM events WHERE scenic_id=? AND type='feature_open' AND created_at>=?",
+            (scenic_id, since),
+        ).fetchall()
+        ratings = conn.execute(
+            "SELECT payload FROM events WHERE scenic_id=? AND type='rating' AND created_at>=?",
+            (scenic_id, since),
+        ).fetchall()
+        sessions = conn.execute(
+            "SELECT COUNT(DISTINCT session_id) AS n FROM events WHERE scenic_id=? AND created_at>=?",
+            (scenic_id, since),
+        ).fetchone()["n"]
+    usage = Counter()
+    for r in feats:
+        f = _payload(r).get("feature")
+        if f:
+            usage[f] += 1
+    scores = [s for r in ratings if isinstance((s := _payload(r).get("score")), (int, float))]
+    return {
+        "scenic_id": scenic_id,
+        "period_days": days,
+        "active_sessions": sessions,
+        "feature_open": dict(usage.most_common()),
+        "rating_count": len(scores),
+        "avg_rating": round(sum(scores) / len(scores), 2) if scores else None,
+    }
