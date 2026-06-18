@@ -36,6 +36,8 @@ Page({
     started: false, connecting: false, connectingText: '正在唤醒慧昭…',
     connected: false, statusText: '未连接',
     hls: '', videoStalled: false, videoStalledText: '画面连接中…',
+    videoMuted: true,  // iOS 只允许静音 autoplay：先静音起播，bindplaying 后再取消静音恢复慧昭声音
+    vdebug: '',        // 屏幕可见的 video 事件调试日志（定位 HLS 卡点用）
     // 选择器
     scenicNames: SCENICS.map(s => s.name), scenicIndex: 0,
     groupNames: GROUPS.map(g => g.name), groupIndex: 0,
@@ -89,7 +91,12 @@ Page({
   start() {
     this.setData({ connecting: true, connectingText: '正在唤醒慧昭…' });
     // 启动 HLS 画面（设 started 触发 <video> 渲染）
-    this.setData({ started: true, hls: cfg.HLS + '?t=' + Date.now() });
+    this._vt0 = Date.now();  // video 事件计时起点
+    this.setData({ started: true, hls: cfg.HLS + '?t=' + Date.now(), vdebug: '0.0s 开始加载 ' + cfg.HLS });
+    // iOS 常拦截 autoplay：在「开始体验」这个用户手势上下文里主动 play()，
+    // 否则 video 会停在 waiting（画面缓冲中）不动。延迟到 <video> 渲染后再取 context。
+    this._vctx = wx.createVideoContext('dh', this);
+    setTimeout(() => { try { this._vctx && this._vctx.play(); } catch (e) {} }, 300);
     // 探活后进入；即便桥接探活失败也允许进入（画面与问答各自降级）
     api.liveHealth().catch(() => ({})).then(() => {
       setTimeout(() => {
@@ -285,13 +292,62 @@ Page({
   },
   onGroupChange(e) { this.setData({ groupIndex: +e.detail.value }); },
 
-  // ───────── 视频状态 ─────────
-  onVideoError() { this.setData({ videoStalled: true, videoStalledText: '画面连接失败，正在重试…' }); this._retryVideo(); },
-  onVideoWaiting() { this.setData({ videoStalled: true, videoStalledText: '画面缓冲中…' }); },
-  onVideoPlaying() { this.setData({ videoStalled: false }); },
+  // ───────── 视频状态（带屏幕调试 HUD，定位 HLS 卡点）─────────
+  // 把 video 生命周期事件追加到屏幕可见的 debug 行 + Console，截图即可诊断
+  _vlog(tag, extra) {
+    const t = ((Date.now() - (this._vt0 || Date.now())) / 1000).toFixed(1);
+    const line = `${t}s ${tag}${extra ? ' ' + extra : ''}`;
+    console.log('[video]', line);
+    const log = (this.data.vdebug ? this.data.vdebug + ' | ' : '') + line;
+    // 只保留最近若干条，避免过长
+    const parts = log.split(' | ').slice(-8);
+    this.setData({ vdebug: parts.join(' | ') });
+  },
+  onVideoLoadedMeta(e) {
+    const d = e && e.detail || {};
+    this._vlog('元数据✓', `${d.width}x${d.height} ${d.duration}s`);
+  },
+  onVideoPlay() { this._vlog('play事件'); },
+  onVideoProgress(e) {
+    const b = e && e.detail && e.detail.buffered;
+    this._vlog('progress', b != null ? `buffered=${b}%` : '');
+  },
+  onVideoTimeUpdate(e) {
+    const d = e && e.detail || {};
+    // 节流：每秒最多记一次，且只在前几次记（证明帧在前进）
+    this._tuCount = (this._tuCount || 0) + 1;
+    if (this._tuCount <= 5) this._vlog('timeupdate', `cur=${(d.currentTime||0).toFixed(1)}`);
+  },
+  onVideoPause() { this._vlog('pause'); },
+  onVideoEnded() { this._vlog('ended'); },
+  copyDebug() {
+    wx.setClipboardData({ data: this.data.vdebug, success: () => this._toast('已复制调试日志') });
+  },
+  onVideoError(e) {
+    const msg = (e && e.detail && e.detail.errMsg) || '未知错误';
+    this._vlog('ERROR', msg);
+    this.setData({ videoStalled: true, videoStalledText: '画面连接失败：' + msg });
+    this._retryVideo();
+  },
+  onVideoWaiting() {
+    this._vlog('waiting缓冲');
+    this.setData({ videoStalled: true, videoStalledText: '画面缓冲中…' });
+  },
+  onVideoPlaying() {
+    this._vlog('playing▶');
+    // 画面真正开始播了 → 此时取消静音是被 iOS 允许的（已在播放中），恢复慧昭声音
+    this.setData({ videoStalled: false });
+    if (this.data.videoMuted) {
+      setTimeout(() => this.setData({ videoMuted: false }), 200);
+    }
+  },
   _retryVideo() {
     if (this._retrying) return;
     this._retrying = true;
-    setTimeout(() => { this.setData({ hls: cfg.HLS + '?t=' + Date.now() }); this._retrying = false; }, 2500);
+    setTimeout(() => {
+      this.setData({ hls: cfg.HLS + '?t=' + Date.now() });
+      try { this._vctx && this._vctx.play(); } catch (e) {}
+      this._retrying = false;
+    }, 2500);
   },
 });

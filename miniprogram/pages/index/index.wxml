@@ -9,8 +9,7 @@
       class="hero-video"
       src="{{hls}}"
       autoplay
-      loop
-      muted="{{false}}"
+      muted="{{videoMuted}}"
       object-fit="cover"
       controls="{{false}}"
       show-center-play-btn="{{false}}"
@@ -22,11 +21,23 @@
       binderror="onVideoError"
       bindwaiting="onVideoWaiting"
       bindplaying="onVideoPlaying"
+      bindloadedmetadata="onVideoLoadedMeta"
+      bindplay="onVideoPlay"
+      bindpause="onVideoPause"
+      bindended="onVideoEnded"
+      bindtimeupdate="onVideoTimeUpdate"
+      bindprogress="onVideoProgress"
     ></video>
     <view wx:if="{{videoStalled}}" class="hero-fallback">
       <view class="hf-orb"><image class="hf-ic" src="/assets/icons/spark.svg" /></view>
       <text class="hf-txt">{{videoStalledText}}</text>
     </view>
+  </view>
+
+  <!-- 调试 HUD：固定屏幕中部、最高层级，真机必可见（定位 HLS 卡点；上线前删） -->
+  <view wx:if="{{vdebug}}" class="vdebug" catchtap="copyDebug">
+    <text class="vdebug-title">📺 VIDEO 调试（点此复制）</text>
+    <text class="vdebug-body">{{vdebug}}</text>
   </view>
   <view class="scrim"></view>
 

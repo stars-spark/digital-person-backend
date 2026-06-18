@@ -24,6 +24,18 @@
 }
 .hf-ic { width: 72rpx; height: 72rpx; }
 .hf-txt { color: var(--on-dark-2); font-size: 26rpx; letter-spacing: 1rpx; }
+/* 调试 HUD：固定屏幕中部、最高层级，真机必可见（定位 HLS 卡点；上线前删） */
+.vdebug {
+  position: fixed; left: 20rpx; right: 20rpx; top: 40%; z-index: 9999;
+  padding: 20rpx 24rpx; border-radius: 16rpx;
+  background: rgba(0,0,0,.85); border: 2rpx solid #6effa8;
+  display: flex; flex-direction: column; gap: 10rpx;
+}
+.vdebug-title { color: #6effa8; font-size: 24rpx; font-weight: 700; }
+.vdebug-body {
+  color: #b6ffd0; font-size: 22rpx; line-height: 1.6;
+  font-family: monospace; word-break: break-all;
+}
 
 .scrim {
   position: absolute; inset: 0; z-index: 1; pointer-events: none;
