@@ -43,3 +43,14 @@ logs/
 # 临时文件
 /tmp/
 *.tar.gz
+
+# MCP 配置（含本机绝对路径 + API key，敏感不提交）
+.mcp.json
+
+# 调试/演示截图（散落在仓库根目录，不入库）
+/*.png
+/*.jpeg
+/*.jpg
+
+# Playwright MCP 缓存
+.playwright-mcp/
