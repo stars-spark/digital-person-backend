@@ -16,6 +16,7 @@ from backend.api.kb_manage import router as kb_manage_router
 from backend.api.analytics import router as analytics_router
 from backend.api.analytics_bi import router as analytics_bi_router
 from backend.api.multimodal import router as mm_router
+from backend.api.checkin import router as checkin_router
 from backend.api.digital_human import router as dh_router
 from backend.api.asr import router as asr_router
 from backend.api.trip import router as trip_router
@@ -67,6 +68,7 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(mm_router)
+app.include_router(checkin_router)
 app.include_router(kb_router)
 app.include_router(kb_manage_router)
 app.include_router(analytics_router)

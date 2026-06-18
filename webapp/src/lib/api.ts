@@ -180,3 +180,29 @@ export async function chatImage(b64: string, fmt: string, scenic: string): Promi
   })
   return { ok: r.ok, data: await r.json() }
 }
+
+// 拍照打卡核验：闭集 VL + 位置软门 + 融合决策（后端 /checkin）
+export interface CheckinCand { id: string; name: string; lng?: number; lat?: number }
+export interface CheckinResult {
+  decision: 'confirmed' | 'wrong_stop' | 'uncertain'
+  matched_id?: string | null
+  matched_name?: string | null
+  confidence: number
+  evidence: string[]
+  distance_m?: number | null
+  reason: string
+  alt_id?: string | null
+}
+export async function checkin(body: {
+  scenic: string; b64: string; fmt: string; targetId: string; candidates: CheckinCand[]; gps?: [number, number] | null
+}): Promise<{ ok: boolean; data: CheckinResult }> {
+  const r = await fetch('/rag/checkin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      scenic_id: body.scenic, image_b64: body.b64, image_format: body.fmt,
+      target_id: body.targetId, candidates: body.candidates, gps: body.gps ?? null,
+    }),
+  })
+  return { ok: r.ok, data: await r.json() }
+}

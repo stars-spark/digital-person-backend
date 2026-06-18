@@ -322,6 +322,48 @@ async function chatWithImage(file, question, scenicId) {
 
 ---
 
+### 1.4 拍照打卡核验（闭集多模态）
+
+> 「跟我游」地图路线的拍照打卡用。**不做开放识别**（易幻觉），而是给 VL 路线候选景点 + 各自标志性特征，
+> 做**闭集核验**并强制结构化输出 evidence；可选 GPS（GCJ-02，与景点坐标同基准）做位置软门；
+> 融合出决策 + 可信理由。准确率高、理由可复核。
+
+```
+POST /checkin
+```
+
+**请求体**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `scenic_id` | string | 景区 id（默认 lingshan） |
+| `image_b64` | string | base64 图片（必填） |
+| `image_format` | string | jpeg/png/webp（默认 jpeg） |
+| `target_id` | string? | 游客想打卡的当前站 id |
+| `candidates` | array | 路线候选站 `[{id,name,lng?,lat?}]`（坐标用于位置佐证） |
+| `gps` | [number,number]? | `[lng,lat]` GCJ-02（AMap 定位）；不传则纯视觉+路线，演示/室内友好 |
+
+**响应体**
+
+```json
+{
+  "decision": "confirmed | wrong_stop | uncertain",
+  "matched_id": "dafo",
+  "matched_name": "灵山大佛",
+  "confidence": 0.98,
+  "evidence": ["巨大的青铜立佛，右手施无畏印、左手与愿印，立于莲花座之上"],
+  "distance_m": null,
+  "reason": "到啦，确认你在「灵山大佛」——我认出了……，打卡成功！",
+  "alt_id": null
+}
+```
+
+- `decision`：`confirmed`（命中目标站→直接打卡）/`wrong_stop`（认出的是别的站→建议调序）/`uncertain`（没把握→提示再拍）。
+- `evidence`：VL 在照片里真实看到的具体特征（可人工复核、防编造）。
+- 决策阈值：默认 0.7；有近距 GPS 佐证（≤120m）放宽到 0.6；GPS 近(≤80m)加信、远(≥300m)减信。
+
+---
+
 ### 1.4 多语言问答
 
 > 服务外籍游客。通过 `/chat`（同步或流式）的 `lang` 参数控制回答语言，接口其余字段不变。
