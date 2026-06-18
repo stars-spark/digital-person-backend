@@ -54,3 +54,8 @@ logs/
 
 # Playwright MCP 缓存
 .playwright-mcp/
+
+# 前端依赖（webapp 不在本仓版本控制，但防误提交 node_modules）
+webapp/node_modules/
+# PlantUML 可下载二进制（render_diagrams.sh 会取）
+tools/plantuml.jar
