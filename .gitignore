@@ -59,3 +59,9 @@ logs/
 webapp/node_modules/
 # PlantUML 可下载二进制（render_diagrams.sh 会取）
 tools/plantuml.jar
+
+# 大体积形象实验/对比产物（可由 scripts/ 重新生成，不入库，避免仓库臌胀）
+assets/avatar_variants/
+assets/avatar_inscene_wanx/
+assets/avatar_compare/
+assets/avatar_outfit_inscene/
