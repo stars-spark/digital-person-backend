@@ -14,3 +14,4 @@ pydantic-settings>=2.3.0
 python-multipart>=0.0.9
 python-dotenv>=1.0.0
 opentelemetry-exporter-otlp-proto-grpc>=1.25.0
+pymupdf
