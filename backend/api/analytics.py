@@ -512,3 +512,40 @@ def feature_usage(scenic_id: str = "lingshan", days: int = 7):
         "rating_count": len(scores),
         "avg_rating": round(sum(scores) / len(scores), 2) if scores else None,
     }
+
+
+@router.get("/reco-performance")
+def reco_performance(scenic_id: str = "lingshan", days: int = 7):
+    """个性化推荐「为你定制」效果：曝光 / 点击 / 点击率 + 热门推荐 + 动作分布。
+
+    数据来自游客端埋点 reco_impression（推荐区曝光）/ reco_click（点了哪张卡）。
+    双面闭环：游客端推荐产出数据 → 此端点供管理端大屏「推荐效果」展现。纯只读，additive。
+    """
+    since = _date_range(days)
+    with get_db() as conn:
+        imps = conn.execute(
+            "SELECT payload FROM events WHERE scenic_id=? AND type='reco_impression' AND created_at>=?",
+            (scenic_id, since),
+        ).fetchall()
+        clks = conn.execute(
+            "SELECT payload FROM events WHERE scenic_id=? AND type='reco_click' AND created_at>=?",
+            (scenic_id, since),
+        ).fetchall()
+    impressions = len(imps)
+    clicks = len(clks)
+    by_title, by_action = Counter(), Counter()
+    for r in clks:
+        p = _payload(r)
+        if p.get("title"):
+            by_title[p["title"]] += 1
+        if p.get("action"):
+            by_action[p["action"]] += 1
+    return {
+        "scenic_id": scenic_id,
+        "period_days": days,
+        "impressions": impressions,
+        "clicks": clicks,
+        "ctr": round(clicks / impressions, 3) if impressions else None,
+        "top_recommendations": dict(by_title.most_common(10)),
+        "by_action": dict(by_action),
+    }
