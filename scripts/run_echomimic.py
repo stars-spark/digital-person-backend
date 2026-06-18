@@ -2,11 +2,13 @@
 用法: python run_echomimic.py <portrait.png> <audio.wav> <out.mp4> [partial_video_length]
 前置: ComfyUI 在 127.0.0.1:8188 运行，肖像/音频已在 ComfyUI/input/。
 """
-import json, sys, time, uuid, random
+import json, os, sys, time, uuid, random
 from pathlib import Path
 import httpx
 
 COMFY = "http://127.0.0.1:8188"
+# 驱动姿态模板（可选 pose_01~04 等）；治眼神上飘时可扫不同 pose 找平视的那个
+POSE_DIR = os.getenv("ECHO_POSE_DIR", "pose_01")
 C = httpx.Client(trust_env=False, timeout=60)
 
 PORTRAIT = sys.argv[1] if len(sys.argv) > 1 else "sweet_bob_portrait.png"
@@ -15,12 +17,18 @@ OUT      = Path(sys.argv[3]) if len(sys.argv) > 3 else Path("/tmp/echomimic_hero
 PVL      = int(sys.argv[4]) if len(sys.argv) > 4 else 65   # 11.6G 用 65；够则升 97
 LENGTH   = int(sys.argv[5]) if len(sys.argv) > 5 else 251  # 生成帧数上限（25fps）→ ≥ 音频时长*25
 
-# 神态对标：让全脸扩散往"端庄女主播、温和浅笑、看镜头、头稳"方向走
-PROMPT = ("A professional female news anchor speaking to the camera, calm and warm, "
-          "gentle pleasant closed-to-slightly-open mouth while talking, natural lively "
-          "facial expressions, cheeks and eyes move naturally as she speaks, looking "
-          "straight at the camera, head steady and upright, elegant and dignified.")
-NEG = ("Gesture is bad. Strange and twisted hands. Bad hands. Bad fingers. blurry, "
+# 神态对标：端庄女主播、温和浅笑、稳稳对视镜头。
+# 眼神：强约束"直视镜头/瞳孔居中/下巴略收"以治 EchoMimic 的眼球上翻+抬头偏置；
+# 删掉"eyes move naturally"（易诱发 gaze 漂移）。
+PROMPT = ("A professional female news anchor speaking directly to the camera, calm and warm. "
+          "Her eyes look straight into the camera lens with steady gentle eye contact, "
+          "pupils centered and level, iris in the middle of the eyes, gaze meeting the viewer. "
+          "Chin slightly lowered, head level and facing forward, not tilted back. "
+          "Gentle pleasant closed-to-slightly-open mouth while talking, natural facial "
+          "expressions, elegant and dignified.")
+NEG = ("looking up, eyes rolled upward, eyes looking at the ceiling, sclera visible under the iris, "
+       "gaze drifting up, chin raised, head tilted back, googly eyes, 眼睛向上看, 翻白眼, 抬头, "
+       "Gesture is bad. Strange and twisted hands. Bad hands. Bad fingers. blurry, "
        "distorted face, frozen stiff face, 夸张表情, 头部剧烈摇晃, 闭眼, 鬼脸.")
 
 
@@ -37,9 +45,11 @@ def build_graph(seed):
                  "block_offload": True, "use_mmgp": "None", "version": "V3_flash"}},
         "23": {"class_type": "Echo_Predata", "inputs": {
                  "info": ["20", 1], "image": ["8", 0], "audio": ["9", 0],
-                 "prompt": PROMPT, "negative_prompt": NEG, "pose_dir": "pose_01",
+                 "prompt": PROMPT, "negative_prompt": NEG, "pose_dir": POSE_DIR,
+                 # facecrop_ratio=1.0 → 不裁切（放大系数=1/ratio，0.8 会 1.25× 放大削头顶）。
+                 # 配套：肖像须预裁成 2:3（如 720×1080）匹配 512×768，避免拉伸畸变。
                  "width": 512, "height": 768, "fps": 25.0,
-                 "facemask_ratio": 0.1, "facecrop_ratio": 0.8, "length": LENGTH,
+                 "facemask_ratio": 0.1, "facecrop_ratio": 1.0, "length": LENGTH,
                  "partial_video_length": PVL, "draw_mouse": False, "motion_sync_": False,
                  "clip": ["5", 0], "clip_vision": ["15", 0]}},
         "21": {"class_type": "Echo_Sampler", "inputs": {
