@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Microphone, Camera, ArrowUp, Sparkle, MapPin, Clock, CircleNotch, GearSix,
-  Compass, Lifebuoy, Medal, NavigationArrow, FlowerLotus, Lightning, ChatCircleDots,
+  Microphone, Camera, ArrowUp, Sparkle, MapPin, CircleNotch, GearSix,
+  Compass, Lifebuoy, Medal, NavigationArrow, ChatCircleDots,
 } from '@phosphor-icons/react'
-import { EMO_META } from '@/lib/icons'
 import { useGuide, SCENICS } from '@/hooks/useGuide'
-import type { Meta, Msg } from '@/hooks/useGuide'
+import type { Meta } from '@/hooks/useGuide'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -21,6 +20,10 @@ import TraceSheet from '@/components/TraceSheet'
 import GpsSheet from '@/components/GpsSheet'
 import AvatarSheet from '@/components/AvatarSheet'
 import Postcard from '@/components/Postcard'
+import HistorySheet from '@/components/HistorySheet'
+import RouteMapSheet from '@/components/RouteMapSheet'
+import { MetaRow } from '@/components/MetaPills'
+import { SCENIC_ROUTES } from '@/lib/routeData'
 import { load as loadTrace } from '@/lib/trace'
 import { loadDarkMode, applyDarkMode } from '@/lib/theme'
 import type { DarkMode } from '@/lib/theme'
@@ -52,9 +55,20 @@ export default function App() {
   const [gpsOpen, setGpsOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [postcardOpen, setPostcardOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [routeMapOpen, setRouteMapOpen] = useState(false)
+  // 「跟我游」：有地图路线数据的景区 → 开地图版；否则回退清单版 TourSheet
+  const openGuide = () => {
+    if (SCENIC_ROUTES[g.scenic]) { g.track('feature_open', { feature: 'routemap' }); setRouteMapOpen(true) }
+    else openFeature('tour', setTourOpen)
+  }
   const connected = g.status === 'connected'
   const t = makeT(g.lang)
   const scenicName = SCENICS.find((s) => s.id === g.scenic)?.name || g.scenic
+  // 舞台字幕的上下文：当前这轮的提问（思考/吐字期间显示，让「问→答」在脸边成对）
+  const liveQ = (g.thinking || g.captionStreaming)
+    ? [...g.messages].reverse().find((m) => m.role === 'user')?.text || ''
+    : ''
 
   const submit = () => { if (draft.trim()) { g.ask(draft); setDraft('') } }
   const askStation = (name: string) => { g.recordVisit(name); g.ask(`请讲讲${name}的故事`) }
@@ -167,7 +181,8 @@ export default function App() {
       </header>
 
       <main className="flex flex-1 flex-col gap-4 px-4 pb-4 pt-4">
-        {/* 数字人舞台 */}
+        {/* 数字人舞台 + 字幕（成组：脸在上、话在下；字幕为独立条，不遮画面） */}
+        <div className="flex flex-col gap-2">
         <div className="relative mx-auto aspect-video w-full overflow-hidden rounded-[1.5rem] border bg-gradient-to-br from-primary/10 via-background to-sweet/10 shadow-[0_12px_44px_-14px_oklch(0.575_0.2_268_/_0.35)]">
           {/* 数字人流为 720×1280 竖版；16:9 横框用「模糊填充」：背景=同画面 cover 放大模糊铺满两侧，
               前景=完整竖版 object-contain 居中（头不偏大、零裁切）。⚠️横版底板就绪后改回 object-cover 即可 */}
@@ -222,16 +237,21 @@ export default function App() {
             </div>
           )}
 
-          {(g.meta.intent || g.meta.location || g.meta.greet || g.meta.degraded) && (
-            <div className="absolute inset-x-3 bottom-3 z-20 flex flex-wrap gap-1.5">
-              {g.meta.greet && <Pill><FlowerLotus className="size-3" weight="duotone" /> 主动迎宾</Pill>}
-              {g.meta.cached && <Pill><Lightning className="size-3" weight="duotone" /> 秒回·缓存</Pill>}
-              {g.meta.degraded && <Pill tone="amber"><ChatCircleDots className="size-3" weight="duotone" /> 文字模式·繁忙</Pill>}
-              {g.meta.location && <Pill><MapPin className="size-3" /> {g.meta.location}</Pill>}
-              {g.meta.intent && <Pill>{intentLabel(g.meta.intent)}</Pill>}
-              {g.meta.emotion && <EmotionPill emotion={g.meta.emotion} />}
-              {g.meta.timing && <Pill tone="muted"><Clock className="size-3" /> {g.meta.timing}s</Pill>}
-            </div>
+        </div>
+
+          {/* 数字人字幕（独立条，紧贴画面正下方）= 唯一回答区：卡拉OK逐字 + 收尾显 meta 行 + 记录入口。
+              location 走上下文小字，故传给 meta 行时剔除 location 防重复。 */}
+          {connected && (g.thinking || g.captionStreaming || g.caption) && (
+            <StageCaption
+              text={g.caption}
+              streaming={g.captionStreaming}
+              thinking={g.thinking && !g.caption}
+              question={liveQ}
+              location={!g.captionStreaming ? g.meta.location : undefined}
+              meta={!g.captionStreaming ? { ...g.meta, location: undefined } : undefined}
+              hasHistory={g.messages.some((m) => m.role === 'user')}
+              onOpenHistory={() => { g.track('feature_open', { feature: 'history' }); setHistoryOpen(true) }}
+            />
           )}
         </div>
 
@@ -240,18 +260,12 @@ export default function App() {
 
         {/* 快捷功能 */}
         <div className="grid grid-cols-4 gap-2">
-          <QuickAction icon={<Compass className="size-[18px]" weight="duotone" />} label={t('qf_tour')} onClick={() => openFeature('tour', setTourOpen)} />
+          <QuickAction icon={<Compass className="size-[18px]" weight="duotone" />} label={t('qf_tour')} onClick={openGuide} />
           <QuickAction icon={<NavigationArrow className="size-[18px]" weight="duotone" />} label={t('qf_gps')} onClick={() => openFeature('gps', setGpsOpen)} />
           <QuickAction icon={<Lifebuoy className="size-[18px]" weight="duotone" />} label={t('qf_facility')} onClick={() => openFeature('facility', setFacOpen)} />
           <QuickAction icon={<Medal className="size-[18px]" weight="duotone" />} label={t('qf_trace')} onClick={() => openFeature('trace', setTraceOpen)} badge={g.trace.visited.length || undefined} />
         </div>
 
-        {/* 对话流（一问一答气泡，新消息自动滚到底） */}
-        <Conversation
-          messages={g.messages}
-          intro={t('intro')}
-          thinkingLabel={t('thinking', { guide: g.guideName })}
-        />
       </main>
 
       {/* 底部固定区：建议快问 chips（始终可见，吸附在输入坞正上方）+ 输入坞 */}
@@ -325,117 +339,72 @@ export default function App() {
         onRate={(score) => { g.track('rating', { score }); g.recordRating(score) }}
       />
       <Postcard open={postcardOpen} onClose={() => setPostcardOpen(false)} scenic={g.scenic} scenicName={scenicName} guideName={g.guideName} trace={g.trace} />
+      <HistorySheet open={historyOpen} onOpenChange={setHistoryOpen} messages={g.messages} />
+      <RouteMapSheet open={routeMapOpen} onOpenChange={setRouteMapOpen} route={SCENIC_ROUTES[g.scenic]} onAsk={(q) => g.ask(q)} />
     </div>
   )
 }
 
-// ── 对话流 ───────────────────────────────────────────────
-// 用户气泡（右对齐 primary 底）+ 助手气泡（左对齐 card 底），按时间排列；新消息/打字时自动滚到底。
-function Conversation({ messages, intro, thinkingLabel }: {
-  messages: Msg[]; intro: string; thinkingLabel: string
+// 舞台字幕（独立条，紧贴画面正下方）：数字人「正在说的话」卡拉OK逐字，画面零遮挡。
+// 字幕有自己的卡片空间、可多行；内层小滚动容器始终吐到底、顶部 mask 渐隐 → 像真字幕只露当前一两句、
+// older 向上淡出。关键：只滚自己这个小容器（programmatic），绝不碰页面滚动 → 不再被拽走。
+// 左侧细竖条 + 主色微底 = 一眼看出「这是导游在说话」，与画面成「脸上·话下」一体。
+function StageCaption({ text, streaming, thinking, question, location, meta, hasHistory, onOpenHistory }: {
+  text: string; streaming: boolean; thinking: boolean; question?: string; location?: string
+  meta?: Meta; hasHistory?: boolean; onOpenHistory?: () => void
 }) {
-  const endRef = useRef<HTMLDivElement | null>(null)
-  // 打字进度变化时也要跟随滚动 → 用一个递增 tick 触发 effect
-  const [tick, setTick] = useState(0)
-  const bump = () => setTick((n) => n + 1)
+  const ref = useRef<HTMLDivElement | null>(null)
+  // 顶部渐隐仅在内容真超高（需要内部滚动）时启用；放得下时不加遮罩，否则第一行会被淡掉=做工粗糙。
+  const [overflowing, setOverflowing] = useState(false)
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
-  }, [messages, tick])
-
+    const el = ref.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    setOverflowing(el.scrollHeight > el.clientHeight + 1)
+  }, [text])
+  // 收尾态（非吐字中）才显 meta 行 + 记录入口；吐字中只留光标、专注读词
+  const hasMeta = !!meta && !!(meta.intent || meta.emotion || meta.timing || meta.cached || meta.degraded || meta.greet)
+  const showFooter = !streaming && (hasHistory || hasMeta)
   return (
-    <div className="flex flex-col gap-3 pt-1">
-      {messages.length === 0 && (
-        <div className="rounded-2xl border bg-card p-4 text-[15px] leading-relaxed text-muted-foreground">
-          {intro}
-        </div>
-      )}
-      {messages.map((m) =>
-        m.role === 'user' ? (
-          <div key={m.id} className="flex justify-end">
-            <div className="max-w-[82%] rounded-2xl rounded-br-md bg-primary px-3.5 py-2.5 text-[15px] leading-relaxed text-primary-foreground shadow-sm shadow-primary/20">
-              <p className="whitespace-pre-wrap break-words">{m.text}</p>
-            </div>
+    <div className="flex gap-2.5 rounded-2xl border border-primary/15 bg-gradient-to-b from-primary/[0.06] to-card px-3.5 py-2.5 shadow-sm">
+      <span aria-hidden className="mt-0.5 w-[3px] shrink-0 rounded-full bg-primary/60" />
+      <div className="min-w-0 flex-1">
+        {(location || question) && (
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            {location
+              ? (<><MapPin className="size-3 shrink-0" /> <span className="truncate">{location}</span></>)
+              : (<><ChatCircleDots className="size-3 shrink-0" weight="duotone" /> <span className="truncate">{question}</span></>)}
           </div>
-        ) : (
-          <div key={m.id} className="flex justify-start">
-            <div className="max-w-[86%] rounded-2xl rounded-bl-md border bg-card px-3.5 py-2.5 text-[15px] leading-relaxed text-card-foreground shadow-sm">
-              {m.thinking ? (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  {thinkingLabel}
-                  <span className="flex gap-1"><Dot /> <Dot d={150} /> <Dot d={300} /></span>
-                </div>
-              ) : (
-                <AssistantBody text={m.text} animate={!!m.animate} streaming={!!m.streaming} meta={m.meta} onReveal={bump} />
-              )}
-            </div>
-          </div>
-        ),
-      )}
-      <div ref={endRef} />
-    </div>
-  )
-}
-
-// 助手气泡正文：
-//  - streaming（卡拉OK字幕）：text 由 useGuide 按说话速率外部递增，直接渲染当前片段 + 闪烁光标，
-//    meta 待收尾（streaming=false）再显；
-//  - animate（拍照/迎宾等非流式）：本地打字机逐字（reduced-motion 直接全文），完成后显 meta。
-function AssistantBody({ text, animate, streaming, meta, onReveal }: {
-  text: string; animate: boolean; streaming?: boolean; meta?: Meta; onReveal: () => void
-}) {
-  const { typed, done } = useTypewriter(text, animate && !streaming, onReveal)
-  const body = streaming ? text : typed
-  const showCaret = streaming || !done
-  const showMeta = !streaming && done && meta
-  return (
-    <>
-      <p className="whitespace-pre-wrap break-words">
-        {body}
-        {showCaret && (
-          <span aria-hidden className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] bg-primary/70 motion-safe:animate-[caret-blink_1s_steps(1)_infinite]" />
         )}
-      </p>
-      {showMeta && <BubbleMeta meta={meta} />}
-    </>
-  )
-}
-
-// 气泡内 meta pills（intent/emotion/timing/cached/degraded/location/greet），复用舞台同款 Pill。
-function BubbleMeta({ meta }: { meta: Meta }) {
-  const has = meta.intent || meta.emotion || meta.timing || meta.cached || meta.degraded || meta.location || meta.greet
-  if (!has) return null
-  return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {meta.greet && <Pill><FlowerLotus className="size-3" weight="duotone" /> 主动迎宾</Pill>}
-      {meta.cached && <Pill><Lightning className="size-3" weight="duotone" /> 秒回·缓存</Pill>}
-      {meta.degraded && <Pill tone="amber"><ChatCircleDots className="size-3" weight="duotone" /> 文字模式·繁忙</Pill>}
-      {meta.location && <Pill><MapPin className="size-3" /> {meta.location}</Pill>}
-      {meta.intent && <Pill>{intentLabel(meta.intent)}</Pill>}
-      {meta.emotion && <EmotionPill emotion={meta.emotion} />}
-      {meta.timing && <Pill tone="muted"><Clock className="size-3" /> {meta.timing}s</Pill>}
+        <div
+          ref={ref}
+          className={cn('max-h-[6em] overflow-hidden', overflowing && '[mask-image:linear-gradient(to_bottom,transparent,#000_1.4em)]')}
+        >
+          <p className="text-[15px] font-medium leading-relaxed text-foreground">
+            {thinking
+              ? (<span className="inline-flex items-center gap-1.5 text-muted-foreground">正在讲解 <span className="flex gap-1"><Dot /><Dot d={150} /><Dot d={300} /></span></span>)
+              : text}
+            {streaming && (
+              <span aria-hidden className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] bg-primary/70 motion-safe:animate-[caret-blink_1s_steps(1)_infinite]" />
+            )}
+          </p>
+        </div>
+        {showFooter && (
+          <div className="mt-2 flex items-center gap-2">
+            {hasMeta && meta && <MetaRow meta={meta} className="min-w-0 flex-1" />}
+            {hasHistory && onOpenHistory && (
+              <button
+                onClick={onOpenHistory}
+                className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition duration-200 ease-[var(--ease-out)] hover:border-primary/30 hover:text-primary active:scale-95"
+              >
+                <ChatCircleDots className="size-3" weight="duotone" /> 记录
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
-}
-
-// 打字机：animate=true 时逐字 reveal；reduced-motion 或 animate=false 直接全文。
-const prefersReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
-function useTypewriter(text: string, animate: boolean, onReveal?: () => void) {
-  const [n, setN] = useState(() => (animate && !prefersReduced() ? 0 : text.length))
-  const revealRef = useRef(onReveal)
-  useEffect(() => { revealRef.current = onReveal })
-  useEffect(() => {
-    if (!animate || prefersReduced()) { setN(text.length); return }
-    setN(0)
-    const id = window.setInterval(() => {
-      setN((p) => {
-        if (p >= text.length) { window.clearInterval(id); return p }
-        revealRef.current?.()
-        return p + 2   // 每 tick 2 字：中文长答更顺滑、不拖沓
-      })
-    }, 28)
-    return () => window.clearInterval(id)
-  }, [text, animate])
-  return { typed: text.slice(0, n), done: n >= text.length }
 }
 
 function QuickAction({ icon, label, onClick, badge }: { icon: React.ReactNode; label: string; onClick: () => void; badge?: number }) {
@@ -470,23 +439,6 @@ function StatusBadge({ status, stalled, t }: { status: string; stalled: boolean;
   )
 }
 
-function EmotionPill({ emotion }: { emotion: string }) {
-  const meta = EMO_META[emotion]
-  if (!meta) return <Pill tone="amber">{emotion}</Pill>
-  return <Pill tone="amber"><meta.Icon className="size-3" weight="duotone" /> {meta.label}</Pill>
-}
-
-function Pill({ children, tone }: { children: React.ReactNode; tone?: 'amber' | 'muted' }) {
-  return (
-    <span className={cn(
-      'inline-flex items-center gap-1 rounded-full bg-background/90 px-2.5 py-1 text-[11px] font-medium shadow-sm backdrop-blur',
-      tone === 'amber' ? 'text-amber-600' : tone === 'muted' ? 'text-muted-foreground' : 'text-primary',
-    )}>
-      {children}
-    </span>
-  )
-}
-
 function IconButton({ children, onClick, disabled, label, state }: {
   children: React.ReactNode; onClick: () => void; disabled?: boolean; label: string; state?: string
 }) {
@@ -507,8 +459,4 @@ function IconButton({ children, onClick, disabled, label, state }: {
 
 function Dot({ d = 0 }: { d?: number }) {
   return <span className="size-1.5 animate-[pulse_1.1s_ease-in-out_infinite] rounded-full bg-muted-foreground/60" style={{ animationDelay: `${d}ms` }} />
-}
-
-function intentLabel(i: string) {
-  return ({ qa: '问答', navigation: '指路', recommend: '推荐', empathy: '关怀', chitchat: '闲聊' } as Record<string, string>)[i] || '问答'
 }

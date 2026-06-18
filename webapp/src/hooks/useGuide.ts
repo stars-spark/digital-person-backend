@@ -78,6 +78,10 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
   const [mic, setMicState] = useState<MicState>('idle')
   const [traceState, setTraceState] = useState<Trace>(() => trace.load())
   const [clipUrl, setClipUrl] = useState('')   // L1 命中：高频问答成品视频，在舞台直接播
+  // 舞台字幕（数字人「正在说的话」）：卡拉OK逐字贴在画面底部，与吐字同步。
+  // 聊天流只保留完整成句的历史；实时演出在这条字幕上，故聊天流不再每字重渲染（根治滚动抢夺）。
+  const [caption, setCaption] = useState('')
+  const [captionStreaming, setCaptionStreaming] = useState(false)
 
   const [guideName, setGuideName] = useState('智能导览')
   // 游客形象精调偏好（空 = 跟随管理端景区默认）；音色消息级即时生效，形象下次唤醒生效
@@ -127,7 +131,8 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
       if (g.text) {
         const m: Meta = { greet: true }
         setReply(g.text); setThinking(false); setMeta(m)
-        patchMsg(aid, { text: g.text, thinking: false, meta: m, animate: true })
+        patchMsg(aid, { text: g.text, thinking: false, meta: m })
+        setCaption(g.text); setCaptionStreaming(false)   // 迎宾词上字幕（贴脸）
         api.liveSay(g.text, scenicRef.current, g.emotion || 'happy', voiceRef.current || undefined)
       } else { setThinking(false); setMessages((prev) => prev.filter((m) => m.id !== aid)) }
     } catch { setThinking(false); setMessages((prev) => prev.filter((m) => m.id !== aid)) }
@@ -296,6 +301,8 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
     const aid = pushMsg({ role: 'assistant', text: '', thinking: true })
     // 不强制先连数字人：未连接时答案以文字/缓存片返回（实时人脸是增强项，非必需）
     setBusy(true); setThinking(true); setMeta({}); setClipUrl('')   // 立即反馈=打断
+    // 打断/新问立刻清空字幕 → 显「新问题 + 正在讲解…」，绝不让上一条答案残留与新问错配
+    setCaption(''); setCaptionStreaming(false)
     const t0 = Date.now()
 
     // ── 卡拉OK式字幕：桥接逐句下发（句子已送数字人开口），前端按"说话速率"推进字符游标，
@@ -318,7 +325,10 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
 
     const stop = () => { if (timer) { clearInterval(timer); timer = undefined } }
     const finalizeBubble = () => {
-      patchMsg(aid, { text: finalText || full, thinking: false, streaming: false, meta: finalMeta, animate: false })
+      setThinking(false)
+      setCaptionStreaming(false)
+      setCaption(finalText || full)                                       // 字幕停在完整答案（贴脸）
+      patchMsg(aid, { text: finalText || full, thinking: false, meta: finalMeta })  // 聊天流落完整成句（含 meta）
       if (finalText || full) setReply(finalText || full)
     }
     const start = () => {
@@ -329,6 +339,8 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
         if (seq !== askSeqRef.current) return                   // 延后期间被新问取代 → 放弃
         firstWordAt = Date.now()                                // 首字出现≈开口（延迟徽章口径）
         setThinking(false)
+        setCaption('')                                          // 开吐前清掉上一轮字幕
+        setCaptionStreaming(true)
         timer = window.setInterval(() => {
         if (seq !== askSeqRef.current) { stop(); return }       // 被新问取代 → 停
         const cps = driveOn ? CPS_SPEAK : CPS_TEXT
@@ -336,10 +348,9 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
         const n = Math.floor(shown)
         if (n !== lastN) {
           lastN = n
-          patchMsg(aid, { text: full.slice(0, n), thinking: false, streaming: true })
-          setReply(full.slice(0, n))
+          setCaption(full.slice(0, n))                          // 舞台字幕逐字推进（卡拉OK），聊天流不动
         }
-        if (genDone && n >= full.length) { stop(); finalizeBubble() }   // 走完且生成结束 → 收尾（显 meta）
+        if (genDone && n >= full.length) { stop(); finalizeBubble() }   // 走完且生成结束 → 收尾（聊天流落成句）
         }, TICK)
       }, driveOn ? START_DELAY_MS : 0)
     }
@@ -354,9 +365,9 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
       )
       if (seq !== askSeqRef.current) { stop(); setMessages((prev) => prev.filter((m) => m.id !== aid)); return }  // 被新问取代 → 撤气泡
       if (!ok) {
-        stop(); setThinking(false)
+        stop(); setThinking(false); setCaptionStreaming(false)
         const txt = '出错：' + (data.detail || '请稍后再试')
-        setReply(txt); patchMsg(aid, { text: txt, thinking: false, streaming: false, animate: false }); return
+        setReply(txt); patchMsg(aid, { text: txt, thinking: false }); return
       }
       // 延迟口径 = 首字出现时刻（≈数字人开口），而非整段生成完——故事类长答案此前被误记成 9s+
       const timing = ((firstWordAt ? firstWordAt - t0 : Date.now() - t0) / 1000).toFixed(1)
@@ -371,9 +382,9 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
     } catch (e) {
       stop()
       if (seq !== askSeqRef.current) { setMessages((prev) => prev.filter((m) => m.id !== aid)); return }  // 旧问出错也不打扰新问
-      setThinking(false)
+      setThinking(false); setCaptionStreaming(false)
       const txt = '请求失败：' + (e instanceof Error ? e.message : String(e))
-      setReply(txt); patchMsg(aid, { text: txt, thinking: false, streaming: false, animate: false })
+      setReply(txt); patchMsg(aid, { text: txt, thinking: false })
     } finally {
       if (seq === askSeqRef.current) setBusy(false)    // 仅最新一问负责解除 busy（揭示循环仍会继续走完字幕）
     }
@@ -403,7 +414,8 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
       const txt = data.reply || '(无结果)'
       const meta: Meta = { location: data.location, emotion: data.emotion, timing: ((Date.now() - t0) / 1000).toFixed(1) }
       setReply(txt); setMeta(meta)
-      patchMsg(aid, { text: txt, thinking: false, meta, animate: true })
+      patchMsg(aid, { text: txt, thinking: false, meta })
+      setCaption(txt); setCaptionStreaming(false)   // 拍照定位结果也上字幕（贴脸）
       trace.recordPhoto()
       setTraceState(data.location ? trace.recordVisit(data.location) : trace.load())
       track('photo_locate', { location: data.location || '' })
@@ -486,6 +498,7 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
     status, setStatus, thinking, busy, reply, meta, messages, mic,
     trace: traceState, recordVisit, recordRouteDone, recordRating, track,
     clipUrl, clearClip: () => setClipUrl(''),
+    caption, captionStreaming,
     connect, ask, toggleVoice, photo, isIOS,
   }
 }
