@@ -43,8 +43,8 @@ def extract_emotion(text: str) -> tuple[str, str]:
 
 
 def _get_model(fast: bool) -> str:
-    """fast=True 用 qwen-turbo（首 token ~150ms），否则 qwen-max（质量更高）。"""
-    return "qwen-turbo" if fast else settings.llm_model
+    """fast=True 用 fast_model（qwen-flash，首 token ~150ms），否则 qa 主模型（qwen-plus）。"""
+    return settings.fast_model if fast else settings.llm_model
 
 
 def chat(

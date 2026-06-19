@@ -9,9 +9,13 @@ class Settings(BaseSettings):
     dashscope_api_key: str = ""
     # qa（事实问答）用模型。qwen-plus 比 qwen-max 生成快 ~2 倍（48 vs 20 字/s），
     # 流式首句从 ~3s 降到 ~1.2s，是压住语音端到端 <5s 的关键；44 题准确率 100%
-    # （keyword 自测），事实由 RAG context 约束，质量足够。生成性意图另走 qwen-turbo。
+    # （keyword 自测），事实由 RAG context 约束，质量足够。生成性意图另走 fast_model。
     llm_model: str = "qwen-plus"
-    vl_model: str = "qwen-vl-max"
+    # 生成性意图/改写/意图分类用快模型。qwen-flash = qwen-turbo 的同代继任（更快更省）。
+    # ⚠️ qwen-turbo 与 qwen-vl-max 均于 2026-07-13 下线 → 已迁至 qwen-flash / qwen3-vl-plus
+    # （本 key 实测可直连 200；-latest 及带日期版仍 403，故用滚动稳定别名）。
+    fast_model: str = "qwen-flash"
+    vl_model: str = "qwen3-vl-plus"
 
     # 部署模式：local（本地GPU）或 cloud（阿里云，用DashScope Embedding）
     deploy_mode: str = "local"

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from backend.llm.multimodal import answer_with_image, locate_landmark
 from backend.db.database import save_conversation
 from backend.rag.pipeline import get_scenic_config, answer as rag_answer
+from backend.core.config import settings
 
 router = APIRouter(prefix="/chat", tags=["multimodal"])
 
@@ -27,7 +28,7 @@ class ImageChatResponse(BaseModel):
     reply: str
     emotion: str
     location: str | None = None   # 识别到的景区地标（如"大佛广场"），无法定位时为 null
-    model_used: str = "qwen-vl-max"
+    model_used: str = "qwen3-vl-plus"
 
 
 @router.post("/image", response_model=ImageChatResponse)
@@ -83,4 +84,5 @@ async def image_chat_endpoint(req: ImageChatRequest):
         context_used=bool(location),
     )
 
-    return ImageChatResponse(reply=reply, emotion=emotion, location=location)
+    return ImageChatResponse(reply=reply, emotion=emotion, location=location,
+                             model_used=settings.vl_model)
