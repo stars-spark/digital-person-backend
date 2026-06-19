@@ -131,7 +131,8 @@ def _live_avatar_candidates(avatar_id: str, scenic_id: str, screen: str) -> list
     """把(形象 id, 景区, 屏幕)解析成 Ditto 底板候选名，最具体→最兜底；调用方取第一个存在的。
     兼容两套命名：身份库 <base>__<scenic>__<aspect>（F1-F6/M1-M4）与
     sweet_bob 传统 <base>_bg_<scenic> / <base>_portrait_<scenic>。"""
-    base = AVATAR_MAP.get(avatar_id, DEFAULT_AVATAR)
+    # custom_* = AI 定制形象，底板名即 id 前缀（custom_<ts>__<scenic>__<aspect>），故直透不回落甜妹
+    base = AVATAR_MAP.get(avatar_id) or (avatar_id if avatar_id.startswith("custom_") else DEFAULT_AVATAR)
     asp = _ASPECT.get(screen, "16x9")
     cands = [
         f"{base}__{scenic_id}__{asp}",     # 身份库·本景区·本比例

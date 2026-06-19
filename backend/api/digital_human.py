@@ -1,4 +1,5 @@
 import glob
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -121,14 +122,38 @@ def _ditto_ready(aid: str):
     """该形象在 ditto_avatars/ 是否真有底板。None=查不到目录(如 ECS/无 GPU 机)→不改判定。"""
     if not _DITTO_DIR:
         return None
-    base = _DITTO_BASE.get(aid)
+    base = _DITTO_BASE.get(aid) or (aid if aid.startswith("custom_") else None)
     if not base:
         return False
     return bool(glob.glob(os.path.join(_DITTO_DIR, f"{base}*.png")))
 
 
+# ── AI 定制形象（万相 t2i 在线生成 → 落 ditto_avatars 即可热切驱动）──
+#    存盘目录与背景上传同源；preview 走 /digital-human/avatar-preview/<id>（绝对 URL，跨前端可达）
+_CUSTOM_DIR: Path = settings.vector_store_dir.parent / "custom_avatars"
+_CUSTOM_JSON: Path = _CUSTOM_DIR / "custom_avatars.json"
+# 预览图绝对前缀：管理端/游客端不同源，相对路径不通用 → 统一走公网网关 /rag（可 env 覆盖）
+PUBLIC_RAG_BASE = os.environ.get(
+    "PUBLIC_RAG_BASE", "https://u891802-x4xd-7f8146e7.bjb2.seetacloud.com:8443/rag")
+
+
+def _load_custom() -> list[dict]:
+    if _CUSTOM_JSON.is_file():
+        try:
+            return json.loads(_CUSTOM_JSON.read_text("utf-8"))
+        except Exception:
+            return []
+    return []
+
+
+def _save_custom(items: list[dict]) -> None:
+    _CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
+    _CUSTOM_JSON.write_text(json.dumps(items, ensure_ascii=False, indent=2), "utf-8")
+
+
 def _effective_avatars() -> list[dict]:
-    """presets ∧ 文件系统真值：标 ready；无底板者强制 coming_soon。legacy/目录未知者保持原样。"""
+    """presets ∧ 文件系统真值：标 ready；无底板者强制 coming_soon。legacy/目录未知者保持原样。
+    末尾追加 AI 定制形象（custom_avatars.json，按文件存在性判 ready）。"""
     out = []
     for a in _AVATAR_PRESETS:
         if a.get("legacy"):
@@ -143,6 +168,15 @@ def _effective_avatars() -> list[dict]:
         else:
             a["coming_soon"] = True
         out.append(a)
+    for c in _load_custom():
+        c = dict(c)
+        rdy = _ditto_ready(c["id"])
+        c["ready"] = bool(rdy)
+        if rdy:
+            c.pop("coming_soon", None)
+        else:
+            c["coming_soon"] = True
+        out.append(c)
     return out
 
 # 音色目录：映射到 Qwen3-TTS-Flash 系统音色（桥接 VOICE_MAP 翻译），消息级即时切换。
@@ -357,3 +391,107 @@ def background_ready(bg_id: str):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail=f"背景不存在: {bg_id}")
     return {"ok": True, "bg_id": bg_id, "status": "ready"}
+
+
+# ── AI 定制形象：万相文生图「人景一体」→ 直接落 ditto_avatars，即可热切驱动 ──────
+#   原理：Ditto「驱动源图」→ 输出≈源底板，故 AI 生成一张带景半身像存进 ditto_avatars/
+#   就是一个可驱动的新形象，无需烘录（set_avatar 运行时重跑 avatar_registrar）。
+#   16:9 与 9:16 用同一 seed 两次生图保证同一人，分别供手机端/大屏端，避免比例撕裂。
+
+_SCENIC_SCENE = {
+    "lingshan":    "庄严的灵山大佛与禅意广场",
+    "nihuawan":    "拈花湾禅意小镇的唐风街巷",
+    "xihu":        "西湖烟雨与断桥远景",
+    "huangshan":   "黄山云海与奇松",
+    "gugong":      "故宫红墙金瓦的宫廷",
+    "zhangjiajie": "张家界石英砂岩峰林",
+    "bingmayong":  "兵马俑军阵展厅",
+    "mogaoku":     "敦煌莫高窟与鸣沙山",
+}
+
+
+class GenerateAvatarIn(BaseModel):
+    prompt:    str = ""
+    scenic_id: str = "lingshan"
+    gender:    str = "female"     # female / male
+    style:     str = "现代"       # 现代 / 古风 / 民族
+    name:      str | None = None
+
+
+@router.post("/generate")
+def generate_avatar(body: GenerateAvatarIn):
+    """AI 定制：万相在线生成「人景一体」半身像 → 落 ditto_avatars 双比例 → 即时入库可热切。"""
+    if not _DITTO_DIR:
+        raise HTTPException(status_code=503,
+                            detail="本机无 Ditto 形象目录，AI 定制需在 GPU 部署机执行")
+    try:
+        import httpx
+        import dashscope
+        from dashscope import ImageSynthesis
+        from io import BytesIO
+        from PIL import Image
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"生成依赖缺失: {e}")
+
+    for k in ("ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"):
+        os.environ.pop(k, None)
+    key = os.environ.get("DASHSCOPE_API_KEY") or getattr(settings, "dashscope_api_key", "")
+    if not key:
+        raise HTTPException(status_code=500, detail="未配置 DASHSCOPE_API_KEY")
+    dashscope.api_key = key
+
+    scene = _SCENIC_SCENE.get(body.scenic_id, "中国著名景区")
+    gz = "女性" if body.gender == "female" else "男性"
+    extra = (body.prompt or "").strip()
+    full = (f"一位{gz}景区导览讲解员，{extra + '，' if extra else ''}{body.style}气质，"
+            f"职业得体着装，面带亲切微笑，正面看向镜头，半身构图居中，"
+            f"站在{scene}前，真实人像摄影，柔和自然光，高清写实，画面只有一个人")
+    neg = "多人,合影,卡通,动漫,3D,扭曲,变形,多手,多脸,残肢,模糊,低质量,文字,水印,丑陋,恐怖,过曝"
+
+    aid = "custom_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    seed = int(datetime.now().timestamp()) % 2147483647
+    # 万相高分生图(size) → 落盘缩到**直播流分辨率**(w,h)：热切底板必须与流同分辨率，
+    # 否则 Ditto putback 撕裂/过曝（main 360p A/V 同步流；portrait 720×1280 竖版流）。
+    specs = [("16x9", "1280*720", 640, 360), ("9x16", "720*1280", 720, 1280)]
+    portrait_im = None
+    with httpx.Client(timeout=90, trust_env=False) as cli:
+        for asp, size, w, h in specs:
+            resp = ImageSynthesis.call(model="wanx2.1-t2i-turbo", prompt=full,
+                                       negative_prompt=neg, n=1, size=size, seed=seed,
+                                       style="<photography>")
+            if resp.status_code != 200:
+                raise HTTPException(status_code=502,
+                                    detail=f"万相生成失败: {resp.code} - {resp.message}")
+            url = resp.output.results[0].url
+            im = Image.open(BytesIO(cli.get(url).content)).convert("RGB")
+            if im.size != (w, h):
+                im = im.resize((w, h), Image.LANCZOS)
+            im.save(os.path.join(_DITTO_DIR, f"{aid}__{body.scenic_id}__{asp}.png"))
+            if asp == "9x16":
+                portrait_im = im
+
+    # 预览（缩略 9:16）
+    _CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
+    prev = portrait_im.copy()
+    prev.thumbnail((360, 640), Image.LANCZOS)
+    prev.save(_CUSTOM_DIR / f"{aid}.jpg", quality=85)
+
+    item = {
+        "id": aid, "name": (body.name or "我的专属向导").strip()[:16],
+        "gender": body.gender, "style": body.style,
+        "persona": "AI 定制", "outfit": (extra[:12] or "定制造型"),
+        "age": "青年", "fit": "AI 定制 · 即时生效",
+        "preview": f"{PUBLIC_RAG_BASE}/digital-human/avatar-preview/{aid}",
+        "recommended": True, "custom": True,
+    }
+    items = _load_custom(); items.insert(0, item); _save_custom(items)
+    return {"ok": True, "scenic_id": body.scenic_id, "avatar": {**item, "ready": True}}
+
+
+@router.get("/avatar-preview/{aid}")
+def avatar_preview(aid: str):
+    """AI 定制形象预览图（绝对 URL 引用，跨前端可达）。"""
+    p = _CUSTOM_DIR / f"{aid}.jpg"
+    if not p.is_file():
+        raise HTTPException(status_code=404, detail=f"预览不存在: {aid}")
+    return FileResponse(str(p), media_type="image/jpeg")

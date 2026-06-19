@@ -192,6 +192,22 @@ export async function liveAskStream(
   return { ok: !!done, data: done ?? { detail: '流式中断' } }
 }
 
+// AI 定制形象：万相「人景一体」在线生成 → 落 ditto_avatars 双比例 → 即时入库可热切（~30s）。
+// 返回新形象 preset（ready:true），前端直接加入形象库并可热切上身。见 API_DOC 4.9。
+export interface GenAvatarReq { prompt?: string; scenic_id: string; gender?: 'female' | 'male'; style?: string; name?: string }
+export async function generateAvatar(req: GenAvatarReq): Promise<{ ok: boolean; avatar?: AvatarPreset; detail?: string }> {
+  try {
+    const r = await fetch('/rag/digital-human/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gender: 'female', style: '现代', ...req }),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) return { ok: false, detail: d?.detail || `HTTP ${r.status}` }
+    return { ok: Boolean(d?.ok), avatar: d?.avatar }
+  } catch (e) { return { ok: false, detail: String(e) } }
+}
+
 // 热拔插换形象：把正在直播的数字人当场换成 avatarId（~1s，不重连）。见 API_DOC 4.7。
 export async function liveSetAvatar(avatarId: string, scenic: string): Promise<{ ok: boolean }> {
   try {

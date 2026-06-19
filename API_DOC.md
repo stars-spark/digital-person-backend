@@ -1142,7 +1142,41 @@ curl -X POST {BASE}/live/avatar -H "Content-Type: application/json" \
 
 > **前端接法**（游客端形象库「试穿/换装」、管理端「形象配置」即时预览）：选 `ready:true` 形象 →
 > `POST /live/avatar` → 直播热切。要持久化为景区默认，另调 `PUT /digital-human/config`（两者互补、互不耦合）。
-> ⚠️ 底板须与当前流分辨率一致（16:9=1280×720 / 9:16=720×1280）——桥接已按 `screen` 自动取对应比例底板，前端只传 `screen`。
+> ⚠️ 底板须与当前**直播流分辨率**一致（main 16:9=640×360 / portrait 9:16=720×1280）——桥接已按 `screen`
+> 自动取对应比例底板，前端只传 `screen`。底板分辨率与流不符会导致 Ditto putback 撕裂/过曝（已实测）。
+
+---
+
+### 4.8 AI 定制形象（万相在线生成，即时入库可驱动）🆕
+
+> 一句话描述 → 万相文生图「人景一体」生成一位**全新向导** → 落 `ditto_avatars/` 双比例底板 →
+> **立即加入形象库（`ready:true`）并可 4.7 热切上身**。无需烘录：Ditto「驱动源图」，源图存在即可驱动，
+> `set_avatar` 运行时重跑源注册。16:9 与 9:16 用同一 seed 两次生图保证同一人，分供手机端/大屏端。
+
+```
+POST {BASE}/digital-human/generate
+Content-Type: application/json
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `prompt` | string | 可选 | 形象描述（如「身着米色针织衫、温柔亲切的年轻女导游」），空则用通用导览员模板 |
+| `scenic_id` | string | 可选 | 景区（默认 lingshan）；决定生成的场景背景 |
+| `gender` | string | 可选 | `female`(默认) / `male` |
+| `style` | string | 可选 | `现代`(默认) / `古风` / `民族` |
+| `name` | string | 可选 | 形象名（默认「我的专属向导」） |
+
+```json
+{ "ok": true, "scenic_id": "lingshan",
+  "avatar": { "id": "custom_20260619_170212", "name": "测试向导", "gender": "female",
+    "style": "现代", "persona": "AI 定制", "preview": "{BASE}/digital-human/avatar-preview/custom_20260619_170212",
+    "recommended": true, "custom": true, "ready": true } }
+```
+
+> 生成约 **30 秒**（两次万相文生图）。新形象写入 `custom_avatars.json`，随后出现在 4.1 `/presets` 的
+> `avatars[]`（`ready:true`、`custom:true`），可被 4.3 `PUT /config` 设为景区默认、被 4.7 `POST /live/avatar` 热切。
+> **预览图**：`GET {BASE}/digital-human/avatar-preview/{id}` → image/jpeg（绝对 URL，跨前端可达）。
+> 前端接法：游客端「形象工坊·AI 定制」、管理端「AI 生成专属向导」均填描述 → 调本端点 → 刷新形象库 + 热切上身。
 
 ---
 

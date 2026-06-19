@@ -46,6 +46,11 @@ export default function AvatarSheet({ open, onOpenChange, scenic, voiceId, setVo
   const [switching, setSwitching] = useState('')  // 正在热切的形象 id（直播换形象中）
   const [sampleIds, setSampleIds] = useState<Set<string>>(new Set())  // 已就位的样音（manifest 列出，控制播放键显隐）
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  // AI 定制：描述 → 万相人景一体生成 → 即时入库可驱动
+  const [genPrompt, setGenPrompt] = useState('')
+  const [genGender, setGenGender] = useState<'female' | 'male'>('female')
+  const [genBusy, setGenBusy] = useState(false)
+  const [genErr, setGenErr] = useState('')
 
   // 当前生效：游客精调优先，否则管理端景区默认
   const activeAvatar = avatarPref || cfg?.avatar_id || ''
@@ -110,6 +115,21 @@ export default function AvatarSheet({ open, onOpenChange, scenic, voiceId, setVo
     api.liveSetAvatar(a.id, scenic).finally(() => setSwitching((s) => (s === a.id ? '' : s)))
   }
   const reset = () => { setAvatarPref(''); setVoiceId(''); setPlaying(''); audioRef.current?.pause() }
+
+  // AI 定制：生成 → 新形象加入库 + 聚焦 + 热切上身（生成端点已落双比例底板，ready 即可驱动）
+  const handleGenerate = async () => {
+    if (genBusy) return
+    setGenBusy(true); setGenErr('')
+    const r = await api.generateAvatar({
+      prompt: genPrompt.trim(), scenic_id: scenic, gender: genGender,
+      style: recoStyle && recoStyle !== '推荐' ? recoStyle : '现代',
+    })
+    setGenBusy(false)
+    if (!r.ok || !r.avatar) { setGenErr(r.detail || '生成失败，请稍后重试'); return }
+    setAvatars((prev) => [r.avatar!, ...prev])
+    setGenPrompt('')
+    pick(r.avatar)   // 落 avatarPref + 热切上身
+  }
 
   const toggleSample = (id: string) => {
     const el = audioRef.current
@@ -300,29 +320,38 @@ export default function AvatarSheet({ open, onOpenChange, scenic, voiceId, setVo
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[14px] font-semibold">生成你的专属向导</span>
-              <span className="block truncate text-[12px] text-muted-foreground">上传一张照片 · 锁脸换装，AI 定制独一无二的形象</span>
+              <span className="block truncate text-[12px] text-muted-foreground">一句话描述 · AI 当场生成「人景一体」形象，即刻上身</span>
             </span>
             <CaretRight className={cn('size-4 shrink-0 text-muted-foreground transition-transform duration-200', aiOpen && 'rotate-90')} />
           </button>
           {aiOpen && (
             <div className="mt-2 rounded-2xl border bg-card p-3.5">
-              <div className="flex flex-col gap-2 text-[12.5px] leading-relaxed text-muted-foreground">
-                <p className="flex items-start gap-1.5"><Sparkle className="mt-0.5 size-3.5 shrink-0 text-primary" weight="duotone" /><span>自研流程：<span className="text-foreground">一张照片 → InstantID 锁定五官 → 文生图换装/换风格 → 烘成可驱动数字人</span>，形象始终是同一个人。</span></p>
-                <p className="text-foreground/80">下方为锁脸换装成果预览：</p>
-              </div>
-              <div className="-mx-1 mt-2 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {sweetWardrobe.filter((a) => a.coming_soon).map((a) => (
-                  <div key={a.id} className="w-[52px] shrink-0">
-                    <div className="aspect-[3/4] overflow-hidden rounded-lg bg-secondary">
-                      {a.preview && <img src={a.preview} alt={a.outfit || a.name} loading="lazy" className="size-full object-cover object-top" />}
-                    </div>
-                    <div className="truncate pt-0.5 text-center text-[9.5px] text-muted-foreground">{a.outfit || a.name}</div>
-                  </div>
+              <p className="mb-2.5 flex items-start gap-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
+                <Sparkle className="mt-0.5 size-3.5 shrink-0 text-primary" weight="duotone" />
+                <span>自研流程：<span className="text-foreground">描述向导形象 → 万相文生图「人景一体」生成 → 落盘可驱动底板</span>，生成后立即加入形象库并上身直播。</span>
+              </p>
+              {/* 性别 */}
+              <div className="mb-2 flex gap-1.5">
+                {(['female', 'male'] as const).map((gd) => (
+                  <button key={gd} onClick={() => setGenGender(gd)} disabled={genBusy}
+                    className={cn('flex-1 rounded-lg border py-1.5 text-[12.5px] transition active:scale-[0.99] disabled:opacity-50',
+                      genGender === gd ? 'border-primary bg-primary/[0.06] text-primary' : 'text-muted-foreground')}>
+                    {gd === 'female' ? '女向导' : '男向导'}
+                  </button>
                 ))}
               </div>
-              <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-[11.5px] text-muted-foreground">
-                <Clock className="size-3 shrink-0" /> 在线定制即将开放，敬请期待
-              </p>
+              <textarea value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)} disabled={genBusy}
+                rows={2} maxLength={60}
+                placeholder="如：身着米色针织衫、温柔亲切的年轻女导游"
+                className="w-full resize-none rounded-lg border bg-background px-2.5 py-2 text-[13px] outline-none transition focus:border-primary/50 disabled:opacity-50" />
+              <button onClick={handleGenerate} disabled={genBusy}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-[13.5px] font-semibold text-primary-foreground transition active:scale-[0.99] disabled:opacity-60">
+                {genBusy
+                  ? <><span className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground" /> 生成中 · 约 30 秒…</>
+                  : <><MagicWand className="size-4" weight="duotone" /> 生成并加入形象库</>}
+              </button>
+              {genErr && <p className="mt-1.5 text-[11.5px] text-destructive">{genErr}</p>}
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">生成后将出现在「形象库 · 推荐」中，可随时切换；同一句描述会生成一位全新的向导。</p>
             </div>
           )}
 
