@@ -967,24 +967,25 @@ GET /digital-human/presets
 ```jsonc
 {
   "avatars": [
-    {"id": "female_sweet", "name": "甜美向导", "gender": "female", "style": "现代",
-     "persona": "活力向导", "outfit": "浅色活力装", "age": "青年", "fit": "现代/都市景区",
+    {"id": "female_sweet", "name": "亲和讲解员", "gender": "female", "style": "现代",
+     "persona": "亲切热忱", "outfit": "浅色活力装", "age": "青年", "fit": "现代/都市景区",
      "preview": "/avatars/female_sweet.jpg", "recommended": true},
-    {"id": "female_guofeng", "name": "古风佳人", "gender": "female", "style": "古风",
-     "persona": "知性讲解", "outfit": "汉服襦裙", "age": "青年", "fit": "古镇·禅意",
+    {"id": "female_guofeng", "name": "古典讲解员", "gender": "female", "style": "古风",
+     "persona": "知性温雅", "outfit": "汉服襦裙", "age": "青年", "fit": "古镇·禅意",
      "preview": "/avatars/female_guofeng.jpg", "recommended": true},
-    {"id": "male_casual", "name": "阳光青年", "gender": "male", "style": "现代",
+    {"id": "male_casual", "name": "阳光讲解员", "gender": "male", "style": "现代",
      "persona": "亲切热情", "outfit": "休闲装", "age": "青年", "fit": "现代/都市景区",
      "preview": "/avatars/male_casual.jpg", "recommended": true},
-    // AI 换装系列（InstantID 锁脸换装，烘录后上架；管理端不可设为默认）
-    {"id": "outfit_qipao", "name": "旗袍雅韵", "gender": "female", "style": "古风",
-     "persona": "知性讲解", "outfit": "旗袍", "age": "青年", "fit": "古镇·民国街区",
+    // AI 换装系列（InstantID 锁脸换装，烘录后上架；管理端不可设为默认）。name=服饰名
+    {"id": "outfit_qipao", "name": "旗袍", "gender": "female", "style": "古风",
+     "persona": "典雅端方", "outfit": "旗袍", "age": "青年", "fit": "古镇·民国街区",
      "preview": "/avatars/outfit_qipao.jpg", "coming_soon": true},
-    // …共 6 款换装 + 1 款 female_mature(中年)，coming_soon=true；另有 legacy:true 旧 id（UI 隐藏）
+    // …共 6 款换装(旗袍/汉服/职业正装/民族服饰/导览马甲/冬季大衣) + 1 款 female_mature(中年)，coming_soon=true；另有 legacy:true 旧 id（UI 隐藏）
+    // 身份库命名统一为「[特征]+讲解员」职务称谓（F1 知性/F2 汉服/F3 活力/F4 旗袍/F5 民族/F6 资深/M1 儒雅/M2 文士/M3 青年/M4 商务）
   ],
   "voices": [
     {"id": "voice_gentle_f", "name": "知性温柔", "gender": "female", "tone": "知性、从容（默认）"},
-    {"id": "voice_lively_f", "name": "活泼甜美", "gender": "female", "tone": "明快、亲和"},
+    {"id": "voice_lively_f", "name": "活泼亲和", "gender": "female", "tone": "明快、亲和"},
     {"id": "voice_wu_f",     "name": "吴侬软语", "gender": "female", "tone": "吴语方言、软糯（江南景区特色）"},
     {"id": "voice_calm_m",   "name": "沉稳大气", "gender": "male",   "tone": "低沉、可靠"},
     {"id": "voice_bright_m", "name": "京腔青年", "gender": "male",   "tone": "北京话、爽朗"}
@@ -1017,7 +1018,7 @@ GET /digital-human/config?scenic_id=lingshan
 {
   "scenic_id": "lingshan",
   "avatar_id": "female_sweet",
-  "avatar_name": "甜美波波头",
+  "avatar_name": "亲和讲解员",
   "voice_id": "voice_gentle_f",
   "voice_name": "知性温柔",
   "background_id": "bg_lingshan",
@@ -1046,7 +1047,7 @@ Content-Type: application/json
 ```bash
 curl -X PUT {BASE}/rag/digital-human/config \
   -H "Content-Type: application/json" \
-  -d '{"scenic_id":"lingshan","avatar_id":"female_sweet","avatar_name":"甜美波波头","voice_id":"voice_gentle_f","voice_name":"知性温柔","background_id":"bg_lingshan","background_name":"灵山·禅意佛境"}'
+  -d '{"scenic_id":"lingshan","avatar_id":"female_sweet","avatar_name":"亲和讲解员","voice_id":"voice_gentle_f","voice_name":"知性温柔","background_id":"bg_lingshan","background_name":"灵山·禅意佛境"}'
 ```
 
 ```json
