@@ -703,7 +703,12 @@ GET /analytics/alerts?scenic_id=lingshan&window_hours=24&threshold=3&min_rate=0.
 ### 3.8 客流热度感知
 
 > 用真实游客行为数据（14 万行）算热门度 + 季节性，叠时段模型 → 拥挤档位 + 旺淡季 + 错峰时段。
-> 供数据大屏「客流分布」与导游错峰建议。黄山/故宫不在真实数据中 → `has_data:false`。
+> 供数据大屏「客流分布」、游客端地图 **POI 级拥挤热力**、与导游错峰建议。
+>
+> **`granularity` 两档**：`lingshan` 返回 **POI 级**（7 个点位，含演出聚集/天气耦合/趋势）；
+> 其余景区返回**景点级**（来自行为数据，黄山/故宫不在数据中 → `has_data:false`、`attractions:[]`）。
+> 真实性来源：热门度/季节性=真实行为数据；九龙灌浴/梵宫演出=景区公示场次（人群随场次聚集）；
+> 天气=实时查询；分钟级拥挤=时段模型估计（`note` 已如实标注）。**同一点会随时间/天气/演出临近自然变化**，前端可定时轮询（建议 30~60s）。
 
 ```
 GET /analytics/crowd?scenic_id=lingshan
@@ -711,14 +716,27 @@ GET /analytics/crowd?scenic_id=lingshan
 
 ```json
 {
-  "scenic_id": "lingshan", "has_data": true,
+  "scenic_id": "lingshan", "has_data": true, "granularity": "poi",
   "season": "旅游旺季", "quiet_hours": "清晨 8 点前或傍晚 17 点后",
-  "as_of": "2026-06-10 20:30",
+  "as_of": "2026-06-19 14:30",
+  "next_show": {"poi": "九龙灌浴", "at": "15:00", "minutes": 30},
   "attractions": [
-    {"attraction": "灵山大佛", "crowd_level": "较多", "crowd_index": 0.78, "month_factor": 1.15}
+    {
+      "poi_id": "jiulong", "attraction": "九龙灌浴", "name": "九龙灌浴",
+      "lng": 120.099984, "lat": 31.424601, "indoor": false,
+      "crowd_level": "较多", "crowd_index": 1.18, "trend": "上升",
+      "popularity": 0.92, "in_show": false,
+      "next_show": "15:00", "minutes_to_show": 30,
+      "hint": "15:00 有演出，人群正在聚集，想看建议提前到、避堵可错峰",
+      "factors": {"base": 0.92, "season": 1.11, "hour": 0.94, "weather": 1.0, "show": 0.0, "gate": 0.0}
+    }
   ]
 }
 ```
+
+> 字段：`crowd_level` 空闲/适中/较多/繁忙（前端可映射绿/黄/橙/红）；`trend` 上升/平稳/下降（画箭头）；
+> `next_show`/`minutes_to_show` 仅演出点位有；`hint` 一句可直接展示的错峰建议；`factors` 透明化各因子供调试。
+> `attraction`==`name` 为兼容旧消费方保留。非 lingshan 的景点级条目仍是旧字段（`month_factor`/`satisfaction` 等）。
 
 ---
 
