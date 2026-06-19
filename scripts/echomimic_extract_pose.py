@@ -59,6 +59,43 @@ def resize_and_pad_param(imh, imw, max_size):
         cb, ce = 0, max_size; rb = half - half_h; re = rb + imh_new
     return imh_new, imw_new, rb, re, cb, ce
 
+def _smooth_seq(arr, win):
+    """对 [T, ...] 序列做居中滑动平均（边界收缩窗口），降抖动。win 为奇数。"""
+    T = arr.shape[0]
+    r = win // 2
+    out = np.empty_like(arr, dtype=np.float64)
+    for t in range(T):
+        a = max(0, t - r); b = min(T, t + r + 1)
+        out[t] = arr[a:b].mean(axis=0)
+    return out.astype(arr.dtype)
+
+def smooth_poses(detected_poses, win):
+    """对 DWPose 逐帧关键点做时间平滑（body/hands/faces），仅在全序列形状一致时生效。
+    根治"摆臂/身体逐帧抖"：DWPose 逐帧检测有噪声 + i2v 本身轻微抖，平滑后明显更稳。"""
+    if win < 3:
+        return detected_poses
+    for key, getter in [
+        ('bodies', lambda dp: dp['bodies']['candidate']),
+        ('hands', lambda dp: dp['hands']),
+        ('faces', lambda dp: dp['faces']),
+    ]:
+        try:
+            seq = [getter(dp) for dp in detected_poses]
+            shapes = {s.shape for s in seq}
+            if len(shapes) != 1:
+                print(f'[smooth] skip {key}: 形状不一致 {shapes}')
+                continue
+            sm = _smooth_seq(np.stack(seq, 0), win)
+            for i, dp in enumerate(detected_poses):
+                if key == 'bodies':
+                    dp['bodies']['candidate'] = sm[i]
+                else:
+                    dp[key] = sm[i]
+        except Exception as e:
+            print(f'[smooth] skip {key}: {e}')
+    print(f'[smooth] 时间平滑 win={win} 完成')
+    return detected_poses
+
 def get_pose_params(detected_poses, max_size, height, width):
     w_min_all, w_max_all, h_min_all, h_max_all, mid_all = [], [], [], [], []
     for num, dp in enumerate(detected_poses):
@@ -132,6 +169,7 @@ if __name__ == '__main__':
     ap.add_argument('--drive', required=True)
     ap.add_argument('--pose_out', required=True)
     ap.add_argument('--refimg_out', required=True)
+    ap.add_argument('--smooth', type=int, default=5, help='时间平滑窗口(奇数, 0/1=关)')
     a = ap.parse_args()
     # 对齐参考图（用参考图自身人体框裁切对齐）
     dp_r, hr, wr, frame_r = get_img_pose(a.refimg)
@@ -140,6 +178,7 @@ if __name__ == '__main__':
     print('[align] ref ->', a.refimg_out)
     # 抽驱动视频 pose（归一化到 [0,1]，每帧 npy 带 draw_pose_params）
     dp_v, hv, wv, _ = get_video_pose(a.drive)
+    dp_v = smooth_poses(dp_v, a.smooth)        # 时间平滑降抖动
     res_v = get_pose_params(dp_v, MAX_SIZE, hv, wv)
     save_pose_params(dp_v, res_v['pose_params'], res_v['draw_pose_params'], a.pose_out)
     print(f'[pose] {len(dp_v)} frames ->', a.pose_out)
