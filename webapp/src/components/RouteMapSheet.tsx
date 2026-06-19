@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Compass, Camera, ChatCircleDots, CircleNotch, Clock, PersonSimpleWalk, CheckCircle, Sparkle, SealCheck, Question, ArrowsClockwise, MapPin } from '@phosphor-icons/react'
+import { Compass, Camera, ChatCircleDots, CircleNotch, Clock, PersonSimpleWalk, CheckCircle, Sparkle, SealCheck, Question, ArrowsClockwise, MapPin, CaretUp, CaretDown, Minus, FilmSlate } from '@phosphor-icons/react'
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { loadAMap, amapConfigured } from '@/lib/amap'
-import { CROWD_META } from '@/lib/routeData'
-import type { ScenicRoute, RouteStop } from '@/lib/routeData'
+import { CROWD_META, LEVEL_TO_CROWD } from '@/lib/routeData'
+import type { ScenicRoute, RouteStop, Crowd } from '@/lib/routeData'
 import * as api from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -94,10 +94,33 @@ export default function RouteMapSheet({ open, onOpenChange, route, onAsk }: {
   const [done, setDone] = useState<string[]>([])
   const [verifying, setVerifying] = useState(false)       // 正在调 /checkin 核验
   const [result, setResult] = useState<api.CheckinResult | null>(null)
+  const [liveCrowd, setLiveCrowd] = useState<Record<string, api.LiveCrowdPoi>>({})  // poi_id → 实时客流
+  const [asOf, setAsOf] = useState('')                    // 实时客流快照时刻
   const fileRef = useRef<HTMLInputElement | null>(null)
   const pendingTargetRef = useRef<string>('')             // 当前要打卡的站 id
 
   const stops = route?.stops ?? []
+  // 实时档位优先：拉到 /analytics/crowd 就按 poi_id 覆盖静态 crowd，拉不到回落静态值
+  const crowdKey = (s: RouteStop): Crowd => {
+    const lv = liveCrowd[s.id]?.crowd_level
+    return (lv && LEVEL_TO_CROWD[lv]) || s.crowd
+  }
+
+  // 拉 POI 级实时客流（演出聚集×天气×时段）；打开时取一次 + 每 45s 刷新，关闭即停。
+  useEffect(() => {
+    if (!open || !route) { setLiveCrowd({}); setAsOf(''); return }
+    let alive = true
+    const pull = async () => {
+      const d = await api.crowdLive(route.scenic)
+      if (!alive || !d) return
+      const m: Record<string, api.LiveCrowdPoi> = {}
+      for (const p of d.attractions) m[p.poi_id] = p
+      setLiveCrowd(m); setAsOf(d.as_of || '')
+    }
+    pull()
+    const t = setInterval(pull, 45000)
+    return () => { alive = false; clearInterval(t) }
+  }, [open, route])
 
   // 初始：当前站 = 第一站
   useEffect(() => {
@@ -131,7 +154,7 @@ export default function RouteMapSheet({ open, onOpenChange, route, onAsk }: {
       route.stops.forEach((s, i) => {
         const m = new AMap.Marker({
           position: [s.lng, s.lat], anchor: 'center', zIndex: 100 + i,
-          content: pinHtml(i, CROWD_META[s.crowd].dot, { active: i === 0, done: false, here: i === 0 }),
+          content: pinHtml(i, CROWD_META[crowdKey(s)].dot, { active: i === 0, done: false, here: i === 0 }),
         })
         m.on('click', () => setActiveId(s.id))
         m.setMap(map)
@@ -165,13 +188,13 @@ export default function RouteMapSheet({ open, onOpenChange, route, onAsk }: {
     if (!mapRef.current || !route) return
     route.stops.forEach((s, i) => {
       const m = markersRef.current[s.id]
-      if (m) m.setContent(pinHtml(i, CROWD_META[s.crowd].dot, {
+      if (m) m.setContent(pinHtml(i, CROWD_META[crowdKey(s)].dot, {
         active: s.id === activeId, done: done.includes(s.id), here: s.id === hereId,
       }))
     })
     const am = markersRef.current[activeId]
     if (am) { try { mapRef.current.panTo(am.getPosition()) } catch { /* ignore */ } }
-  }, [activeId, hereId, done, route])
+  }, [activeId, hereId, done, route, liveCrowd])
 
   // 打卡成功：标记到达 → 你在这前进到下一站
   const checkIn = (id: string) => {
@@ -259,11 +282,21 @@ export default function RouteMapSheet({ open, onOpenChange, route, onAsk }: {
 
             {/* 下：联动旅程线（点站 ↔ 地图 pin 高亮平移） */}
             <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-4 pb-[max(20px,env(safe-area-inset-bottom))]">
+              {asOf && (
+                <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
+                  <span className="relative flex size-1.5">
+                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+                  </span>
+                  实时客流 · {asOf.slice(11)} 更新 · 随演出/天气/时段变化
+                </div>
+              )}
               {stops.map((s, i) => {
                 const isActive = s.id === activeId
                 const isDone = done.includes(s.id)
                 const isHere = s.id === hereId
-                const cm = CROWD_META[s.crowd]
+                const live = liveCrowd[s.id]
+                const cm = CROWD_META[crowdKey(s)]
                 return (
                   <div key={s.id}>
                     <button
@@ -291,9 +324,20 @@ export default function RouteMapSheet({ open, onOpenChange, route, onAsk }: {
                         <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground">
                           <span className={cn('inline-flex items-center gap-1 font-medium', cm.color)}>
                             <span className="size-1.5 rounded-full" style={{ background: cm.dot }} /> {cm.label}
+                            {live && (live.trend === '上升'
+                              ? <CaretUp className="size-3 text-orange-500" weight="bold" />
+                              : live.trend === '下降'
+                                ? <CaretDown className="size-3 text-emerald-500" weight="bold" />
+                                : <Minus className="size-3 opacity-60" weight="bold" />)}
                           </span>
                           <span className="inline-flex items-center gap-0.5"><Clock className="size-3" /> 停留{s.stayMin}分</span>
                           {s.indoor && <span className="text-primary">室内</span>}
+                          {live && (live.in_show || (live.next_show && live.minutes_to_show != null && live.minutes_to_show >= 0 && live.minutes_to_show <= 60)) && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
+                              <FilmSlate className="size-3" weight="duotone" />
+                              {live.in_show ? '演出中' : `${live.next_show} 演出·${live.minutes_to_show}分后`}
+                            </span>
+                          )}
                         </span>
                         <span className="mt-1 block text-[12.5px] leading-snug text-foreground/80">{s.reason}</span>
                         {isActive && (

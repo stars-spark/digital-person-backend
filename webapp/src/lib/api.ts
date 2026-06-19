@@ -33,6 +33,37 @@ export async function today(scenic: string): Promise<TodayResp> {
   return r.json()
 }
 
+// POI 级实时客流（后端 /analytics/crowd?scenic_id=lingshan 返回 granularity:poi）
+export interface LiveCrowdPoi {
+  poi_id: string
+  name: string
+  crowd_level: string          // 空闲 / 适中 / 较多 / 繁忙
+  crowd_index: number
+  trend: '上升' | '平稳' | '下降'
+  indoor: boolean
+  next_show: string | null     // "15:00"
+  minutes_to_show: number | null
+  in_show: boolean
+  hint: string
+}
+export interface LiveCrowdResp {
+  scenic_id: string
+  granularity: string          // poi | attraction
+  as_of: string
+  has_data: boolean
+  next_show?: { poi: string; at: string; minutes: number } | null
+  attractions: LiveCrowdPoi[]
+}
+// 拉某景区实时客流；失败/无数据返回 null（调用方回落静态档位）。
+export async function crowdLive(scenic: string): Promise<LiveCrowdResp | null> {
+  try {
+    const r = await fetch(`/rag/analytics/crowd?scenic_id=${encodeURIComponent(scenic)}`)
+    if (!r.ok) return null
+    const d = await r.json()
+    return d?.has_data ? d : null
+  } catch { return null }
+}
+
 export interface Station { name: string; hint: string }
 export interface Route { id: string; title: string; duration: string; tag: string; group: string; stations: Station[] }
 export async function routes(scenic: string): Promise<Route[]> {

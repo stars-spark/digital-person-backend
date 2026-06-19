@@ -1,6 +1,7 @@
 // 个性化路线数据（地图可视化用）。坐标 = 高德 POI 检索的真实 GCJ-02 经纬度（与高德底图同基准）。
-// 客流/停留/步行/理由当前为合理模拟值，后续可由后端按 画像×客流×天气×时段 动态返回（结构不变）。
-export type Crowd = 'low' | 'mid' | 'high'
+// stop.crowd 为静态兜底档位；运行时 RouteMapSheet 拉 /analytics/crowd（POI 级实时：演出聚集×天气×时段）
+// 按 poi_id 覆盖之，拉取失败才回落这里的静态值。
+export type Crowd = 'low' | 'mid' | 'high' | 'full'
 
 export interface RouteStop {
   id: string
@@ -59,7 +60,13 @@ export const SCENIC_ROUTES: Record<string, ScenicRoute> = {
 }
 
 export const CROWD_META: Record<Crowd, { label: string; color: string; dot: string }> = {
-  low: { label: '人少', color: 'text-emerald-600', dot: '#10b981' },
+  low: { label: '空闲', color: 'text-emerald-600', dot: '#10b981' },
   mid: { label: '适中', color: 'text-amber-600', dot: '#f59e0b' },
-  high: { label: '较多', color: 'text-red-600', dot: '#ef4444' },
+  high: { label: '较多', color: 'text-orange-600', dot: '#f97316' },
+  full: { label: '繁忙', color: 'text-red-600', dot: '#ef4444' },
+}
+
+// 后端实时客流档位（中文）→ 前端 Crowd 键。供 RouteMapSheet 把 /analytics/crowd 的 crowd_level 落到色板。
+export const LEVEL_TO_CROWD: Record<string, Crowd> = {
+  空闲: 'low', 适中: 'mid', 较多: 'high', 繁忙: 'full',
 }
