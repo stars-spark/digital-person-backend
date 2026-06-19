@@ -79,6 +79,11 @@ export default function App() {
   const t = makeT(g.lang)
   // 快问 chips 按画像挑选（同行人×兴趣）：亲子看「带孩子玩什么」、长辈看「哪里能歇脚」、拍照看「拍照机位」
   const suggestions = useMemo(() => quickAsks(g.groupType, g.interests, g.lang), [g.groupType, g.interests, g.lang])
+  // 舞台成片(含手势欢迎片 / L1 缓存片)→ 实时流的交叉淡出：clip 结束不硬切，~480ms 淡出露出底下实时流，
+  // 把"有手→无手 / 半身→胸像 / 取景跳变"读成一次有意的过渡（手势欢迎片切实时问答的接缝平滑器）
+  const [clipEnding, setClipEnding] = useState(false)
+  useEffect(() => { setClipEnding(false) }, [g.clipUrl])   // 新片到来/清空 → 复位淡出态
+  const fadeOutClip = () => { setClipEnding(true); window.setTimeout(() => { g.clearClip(); setClipEnding(false) }, 480) }
   const scenicName = SCENICS.find((s) => s.id === g.scenic)?.name || g.scenic
   // 舞台字幕的上下文：当前这轮的提问（思考/吐字期间显示，让「问→答」在脸边成对）
   const liveQ = (g.thinking || g.captionStreaming)
@@ -221,8 +226,11 @@ export default function App() {
               autoPlay
               playsInline
               webkit-playsinline="true"
-              onEnded={g.clearClip}
-              className="absolute inset-0 z-30 size-full object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.42)]"
+              onEnded={fadeOutClip}
+              className={cn(
+                'absolute inset-0 z-30 size-full object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.42)] transition-opacity duration-500 ease-[var(--ease-out)]',
+                clipEnding ? 'opacity-0' : 'opacity-100',
+              )}
             />
           )}
 
