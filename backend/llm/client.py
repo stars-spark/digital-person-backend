@@ -43,8 +43,49 @@ def extract_emotion(text: str) -> tuple[str, str]:
 
 
 def _get_model(fast: bool) -> str:
-    """fast=True 用 fast_model（qwen-flash，首 token ~150ms），否则 qa 主模型（qwen-plus）。"""
+    """fast=True 用 fast_model（qwen-flash，首 token ~150ms），否则 qa 主模型（qwen-plus）。
+    本地后端用 local_llm_model（单模型兼顾 qa/生成）。"""
+    if settings.llm_backend == "local":
+        return settings.local_llm_model
     return settings.fast_model if fast else settings.llm_model
+
+
+# ── 本地 LLM 兜底分支（LLM_BACKEND=local）：OpenAI 兼容端点（Ollama/vLLM）──
+# 云端路径完全不动；仅 llm_backend=local 时由 chat()/_raw_token_stream() 顶部切到这里。
+def _local_chat(messages: List[dict]) -> str:
+    import httpx
+    r = httpx.post(
+        f"{settings.local_llm_base}/chat/completions",
+        json={"model": settings.local_llm_model, "messages": messages,
+              "temperature": 0.7, "max_tokens": 1024, "stream": False},
+        timeout=120, trust_env=False,   # trust_env=False 规避系统 SOCKS 代理坑
+    )
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+async def _local_token_stream(messages: List[dict]) -> AsyncGenerator[str, None]:
+    import json as _json
+    import httpx
+    async with httpx.AsyncClient(timeout=120, trust_env=False) as cli:
+        async with cli.stream(
+            "POST", f"{settings.local_llm_base}/chat/completions",
+            json={"model": settings.local_llm_model, "messages": messages,
+                  "temperature": 0.7, "max_tokens": 1024, "stream": True},
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    delta = _json.loads(data)["choices"][0]["delta"].get("content")
+                except Exception:  # noqa: BLE001
+                    continue
+                if delta:
+                    yield delta
 
 
 def chat(
@@ -57,6 +98,9 @@ def chat(
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
+
+    if settings.llm_backend == "local":
+        return _local_chat(messages)
 
     response = Generation.call(
         model=_get_model(fast),
@@ -85,6 +129,11 @@ async def _raw_token_stream(
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
+
+    if settings.llm_backend == "local":
+        async for tok in _local_token_stream(messages):
+            yield tok
+        return
 
     # DashScope 的流式是同步阻塞 generator；若直接在 async 里 for 迭代会卡住
     # 事件循环，导致 FastAPI 无法逐块 flush SSE（表现为整段答案一次性到达）。

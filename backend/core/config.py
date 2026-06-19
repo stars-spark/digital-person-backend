@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     fast_model: str = "qwen-flash"
     vl_model: str = "qwen3-vl-plus"
 
+    # 文本 LLM 后端：cloud（DashScope，默认）| local（本地模型，离线兜底 + 自主可控答辩亮点）。
+    # local 走 OpenAI 兼容端点（Ollama :11434/v1 或 vLLM）；qa 事实由 RAG context 约束，
+    # 本地 7-14B 即可。云端路径不受影响（仅 llm_backend=local 时切走）。VL 多模态仍走云。
+    llm_backend: str = "cloud"          # cloud | local
+    local_llm_base: str = "http://localhost:11434/v1"
+    local_llm_model: str = "qwen2.5:7b-instruct"
+
     # 部署模式：local（本地GPU）或 cloud（阿里云，用DashScope Embedding）
     deploy_mode: str = "local"
 
