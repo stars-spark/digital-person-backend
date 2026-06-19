@@ -12,6 +12,20 @@ export async function greeting(scenic: string, groupType = 'adult'): Promise<Gre
   return r.json()
 }
 
+// 预渲染「含手势」欢迎片清单（仿 L1 FAQ）：连接时若该景区×同行人有片，先播含手势+自带语音的成片，
+// 播完回归实时问答（实时 Ditto 出不了手，故手势走离线预渲染片）。空清单/无命中 → 回退实时迎宾。
+export interface GreetingClip { clip: string; text?: string; emotion?: string }
+export async function greetingClip(scenic: string, groupType: string): Promise<GreetingClip | null> {
+  try {
+    const r = await fetch('/greeting/manifest.json', { cache: 'no-cache' })
+    if (!r.ok) return null
+    const m = await r.json()
+    const byScenic = m?.scenics?.[scenic]
+    const c: GreetingClip | undefined = byScenic?.[groupType] || byScenic?.adult   // 同行人缺则回落 adult
+    return c?.clip ? c : null
+  } catch { return null }
+}
+
 export interface TodayResp { weather?: string; period?: string; crowd?: string; tip?: string }
 export async function today(scenic: string): Promise<TodayResp> {
   const r = await fetch(`/rag/trip/today?scenic_id=${scenic}`)

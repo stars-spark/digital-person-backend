@@ -142,6 +142,22 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
   const greet = useCallback(async () => {
     if (greetedRef.current) return
     greetedRef.current = true
+    // ① 优先：连接时先播「含手势」预渲染欢迎片（自带语音+挥手），播完 onEnded 回归实时。
+    //    实时 Ditto 驱动静态肖像、出不了手 → 手势只能走离线预渲染片；命中即不再 liveSay（避免双声）。
+    try {
+      const gc = await api.greetingClip(scenicRef.current, groupRef.current)
+      if (gc?.clip) {
+        const m: Meta = { greet: true }
+        if (gc.text) {
+          setReply(gc.text); setMeta(m)
+          pushMsg({ role: 'assistant', text: gc.text, meta: m })
+          setCaption(gc.text); setCaptionStreaming(false)
+        }
+        setClipUrl(gc.clip)                              // 舞台播含手势欢迎片（自带音频）
+        return
+      }
+    } catch { /* 取片失败 → 回退实时迎宾 */ }
+    // ② 回退：实时数字人开口迎宾（无手势，原逻辑）
     setThinking(true)
     const aid = pushMsg({ role: 'assistant', text: '', thinking: true })
     try {
