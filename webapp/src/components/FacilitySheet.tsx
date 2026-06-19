@@ -1,22 +1,30 @@
-import { useEffect, useState } from 'react'
-import { NavigationArrow, Lifebuoy, MapPin } from '@phosphor-icons/react'
+import { useEffect, useMemo, useState } from 'react'
+import { NavigationArrow, Lifebuoy, MapPin, Sparkle } from '@phosphor-icons/react'
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { FACILITY_ICONS } from '@/lib/icons'
+import { facilityRank, facilityHint } from '@/lib/personalize'
+import type { Lang } from '@/lib/i18n'
 import * as api from '@/lib/api'
 import type { FacilityGroup } from '@/lib/api'
 
 interface Props {
   open: boolean; onOpenChange: (o: boolean) => void
-  scenic: string
+  scenic: string; groupType: string; lang: Lang
   onAsk: (q: string) => void
 }
 
-export default function FacilitySheet({ open, onOpenChange, scenic, onAsk }: Props) {
+export default function FacilitySheet({ open, onOpenChange, scenic, groupType, lang, onAsk }: Props) {
   const [groups, setGroups] = useState<FacilityGroup[]>([])
   useEffect(() => {
     if (!open) return
     api.facilities(scenic).then(setGroups).catch(() => setGroups([]))
   }, [open, scenic])
+  // 按画像把最相关的设施类别提前（亲子→母婴/卫生间，长辈→休息/医务/无障碍）
+  const ordered = useMemo(() => {
+    const rank = facilityRank(groupType)
+    return [...groups].sort((a, b) => rank(a.id) - rank(b.id))
+  }, [groups, groupType])
+  const hint = facilityHint(groupType, lang)
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -30,8 +38,13 @@ export default function FacilitySheet({ open, onOpenChange, scenic, onAsk }: Pro
           </DrawerTitle>
         </DrawerHeader>
         <div className="overflow-y-auto px-4 pb-[max(20px,env(safe-area-inset-bottom))] pt-1">
+          {hint && groups.length > 0 && (
+            <div className="mb-2.5 flex items-center gap-1.5 rounded-xl bg-primary/[0.06] px-3 py-2 text-[12.5px] font-medium text-primary">
+              <Sparkle className="size-3.5 shrink-0" weight="duotone" />{hint}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-2.5">
-            {groups.map((g) => {
+            {ordered.map((g) => {
               const FIcon = FACILITY_ICONS[g.id] || MapPin
               return (
               <div key={g.id} className="rounded-2xl border bg-card p-3.5">

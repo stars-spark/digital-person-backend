@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { X, DownloadSimple, CircleNotch, ShareNetwork } from '@phosphor-icons/react'
 import type { Trace } from '@/lib/trace'
 import { badges } from '@/lib/trace'
+import { tripBlessing } from '@/lib/personalize'
+import type { Lang } from '@/lib/i18n'
 
 interface Props {
   open: boolean; onClose: () => void
   scenic: string; scenicName: string
   guideName: string
+  groupType: string; lang: Lang
   trace: Trace
 }
 
@@ -42,7 +45,7 @@ const SCENIC_PALETTE: Record<string, keyof typeof PALETTES> = {
   xihu: 'cyan', zhangjiajie: 'cyan', huangshan: 'cool', gugong: 'gold',
 }
 
-export default function Postcard({ open, onClose, scenic, scenicName, guideName, trace }: Props) {
+export default function Postcard({ open, onClose, scenic, scenicName, guideName, groupType, lang, trace }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [drawing, setDrawing] = useState(true)
   const [dataUrl, setDataUrl] = useState('')
@@ -63,7 +66,7 @@ export default function Postcard({ open, onClose, scenic, scenicName, guideName,
       setDrawing(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, scenic, scenicName, guideName, trace])
+  }, [open, scenic, scenicName, guideName, groupType, lang, trace])
 
   // 满版完整风景明信片：实体白边 + 整图铺满(同比例零裁切，主体不被斩断) + 底部影院渐变信息区 + 邮戳点缀
   function paint(ctx: CanvasRenderingContext2D, bg: HTMLImageElement | null) {
@@ -112,7 +115,8 @@ export default function Postcard({ open, onClose, scenic, scenicName, guideName,
     drawPostmark(ctx, rx - 56, IMG.y + 104, 56, now)
 
     // ④ 底部信息区（自底向上累加：内容多寡都不碰撞、都锚在底部渐变内）
-    const blessing = BLESS[scenic] || '愿这段旅程，成为你心里的好风景。'
+    // 寄语优先用本程足迹×画像的个性化收尾（导游"收尾关怀"），无足迹则回退景区通用祝福
+    const blessing = tripBlessing(trace.visited, groupType, guideName, scenicName, lang) || BLESS[scenic] || '愿这段旅程，成为你心里的好风景。'
     const earnedCount = badges(trace).filter((b) => b.earned).length
     const statBits = [
       trace.visited.length && `到访 ${trace.visited.length} 处`,

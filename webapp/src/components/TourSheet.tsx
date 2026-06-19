@@ -20,8 +20,11 @@ export default function TourSheet({ open, onOpenChange, scenic, groupType, visit
   useEffect(() => {
     if (!open) return
     setSel(null)
-    api.routes(scenic).then(setList).catch(() => setList([]))
-  }, [open, scenic])
+    // 命中当前同行人画像的路线置顶（「为你推荐」徽章已在，再让它排在第一眼）
+    api.routes(scenic)
+      .then((rs) => setList([...rs].sort((a, b) => Number(b.group === groupType) - Number(a.group === groupType))))
+      .catch(() => setList([]))
+  }, [open, scenic, groupType])
 
   const speak = (name: string) => { onAsk(name); onOpenChange(false) }
 

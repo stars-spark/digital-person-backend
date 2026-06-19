@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Microphone, Camera, ArrowUp, Sparkle, MapPin, CircleNotch, GearSix,
   Compass, Lifebuoy, Medal, NavigationArrow, ChatCircleDots,
@@ -26,19 +26,11 @@ import ForYouSection from '@/components/ForYouSection'
 import ProfileSheet from '@/components/ProfileSheet'
 import { MetaRow } from '@/components/MetaPills'
 import { SCENIC_ROUTES } from '@/lib/routeData'
+import { quickAsks } from '@/lib/personalize'
 import type { RecoCard } from '@/lib/api'
 import { load as loadTrace } from '@/lib/trace'
 import { loadDarkMode, applyDarkMode } from '@/lib/theme'
 import type { DarkMode } from '@/lib/theme'
-
-const SUGGESTIONS = [
-  { t: '必看景点', q: '这个景区有哪些必看的景点？' },
-  { t: '推荐路线', q: '帮我推荐一条游览路线' },
-  { t: '讲个故事', q: '给我讲一个这里的历史故事' },
-  { t: '现在人多吗', q: '现在景区人多吗？怎么错峰？' },
-  { t: '附近吃什么', q: '附近有什么特色美食？' },
-]
-
 
 export default function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -85,6 +77,8 @@ export default function App() {
   }
   const connected = g.status === 'connected'
   const t = makeT(g.lang)
+  // 快问 chips 按画像挑选（同行人×兴趣）：亲子看「带孩子玩什么」、长辈看「哪里能歇脚」、拍照看「拍照机位」
+  const suggestions = useMemo(() => quickAsks(g.groupType, g.interests, g.lang), [g.groupType, g.interests, g.lang])
   const scenicName = SCENICS.find((s) => s.id === g.scenic)?.name || g.scenic
   // 舞台字幕的上下文：当前这轮的提问（思考/吐字期间显示，让「问→答」在脸边成对）
   const liveQ = (g.thinking || g.captionStreaming)
@@ -277,7 +271,7 @@ export default function App() {
         </div>
 
         {/* 今日游园建议卡 */}
-        <TodayCard scenic={g.scenic} label={{ today: t('today'), tip: t('today_tip') }} />
+        <TodayCard scenic={g.scenic} groupType={g.groupType} interests={g.interests} lang={g.lang} label={{ today: t('today'), tip: t('today_tip') }} />
 
         {/* 为你定制（个性化推荐区） */}
         <ForYouSection cards={g.recos} basis={g.recoBasis} loading={g.recosLoading} onCard={handleReco}
@@ -298,13 +292,13 @@ export default function App() {
         {/* 建议快问 */}
         <ScrollArea className="-mx-4 mb-2.5 w-[calc(100%+2rem)] whitespace-nowrap px-4">
           <div className="flex gap-2 pb-1">
-            {SUGGESTIONS.map((s) => (
+            {suggestions.map((s) => (
               <button
-                key={s.t}
-                onClick={() => g.ask(s.q)}
+                key={s.id}
+                onClick={() => { g.track('quick_ask', { id: s.id }); g.ask(s.q) }}
                 className="shrink-0 rounded-full border bg-card px-3.5 py-1.5 text-[13px] font-medium shadow-sm transition duration-200 ease-[var(--ease-out)] hover:border-primary/30 hover:text-primary active:scale-95"
               >
-                {s.t}
+                {s.label}
               </button>
             ))}
           </div>
@@ -356,14 +350,14 @@ export default function App() {
         onAsk={askStationVia('tour')}
         onRouteDone={(id) => { g.track('milestone', { kind: 'route', id }); g.recordRouteDone(id) }}
       />
-      <FacilitySheet open={facOpen} onOpenChange={setFacOpen} scenic={g.scenic} onAsk={(q) => g.ask(q)} />
+      <FacilitySheet open={facOpen} onOpenChange={setFacOpen} scenic={g.scenic} groupType={g.groupType} lang={g.lang} onAsk={(q) => g.ask(q)} />
       <GpsSheet open={gpsOpen} onOpenChange={setGpsOpen} scenic={g.scenic} onAsk={askStationVia('gps')} />
       <TraceSheet
         open={traceOpen} onOpenChange={setTraceOpen} trace={g.trace}
         onPostcard={() => { g.track('milestone', { kind: 'postcard' }); setTraceOpen(false); setPostcardOpen(true) }}
         onRate={(score) => { g.track('rating', { score }); g.recordRating(score) }}
       />
-      <Postcard open={postcardOpen} onClose={() => setPostcardOpen(false)} scenic={g.scenic} scenicName={scenicName} guideName={g.guideName} trace={g.trace} />
+      <Postcard open={postcardOpen} onClose={() => setPostcardOpen(false)} scenic={g.scenic} scenicName={scenicName} guideName={g.guideName} groupType={g.groupType} lang={g.lang} trace={g.trace} />
       <HistorySheet open={historyOpen} onOpenChange={setHistoryOpen} messages={g.messages} />
       <RouteMapSheet open={routeMapOpen} onOpenChange={setRouteMapOpen} route={SCENIC_ROUTES[g.scenic]} onAsk={(q) => g.ask(q)} />
       <ProfileSheet
