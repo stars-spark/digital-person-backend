@@ -40,20 +40,23 @@ def _directive_with_context(intent: Intent, scenic_id: str) -> str:
                 directive += "\n\n" + brief
     return directive
 
+# guide_name = 数字人对外名称。产品定位：去人名化，统一「<景区简称>AI智能导览数字人」
+# （非"慧昭/婉清"等拟人名）。系统模板已禁用人名自称；此值经 /scenic/theme 暴露给前端，
+# 用于"正在思考"提示、明信片落款等 {guide} 占位。简称为各项手写（非 name 全称）。
 SCENIC_CONFIG: dict[str, dict] = {
-    "lingshan":    {"name": "灵山胜境",           "guide_name": "慧昭"},
-    "nihuawan":    {"name": "拈花湾",             "guide_name": "禅悦"},
-    "xihu":        {"name": "西湖",               "guide_name": "婉清"},
-    "huangshan":   {"name": "黄山",               "guide_name": "云松"},
-    "gugong":      {"name": "故宫博物院",         "guide_name": "瑾瑜"},
-    "zhangjiajie": {"name": "张家界国家森林公园", "guide_name": "岚溪"},
-    "bingmayong":  {"name": "秦始皇帝陵博物院",   "guide_name": "秦韵"},
-    "mogaoku":     {"name": "敦煌莫高窟",         "guide_name": "妙音"},
+    "lingshan":    {"name": "灵山胜境",           "guide_name": "灵山AI智能导览数字人"},
+    "nihuawan":    {"name": "拈花湾",             "guide_name": "拈花湾AI智能导览数字人"},
+    "xihu":        {"name": "西湖",               "guide_name": "西湖AI智能导览数字人"},
+    "huangshan":   {"name": "黄山",               "guide_name": "黄山AI智能导览数字人"},
+    "gugong":      {"name": "故宫博物院",         "guide_name": "故宫AI智能导览数字人"},
+    "zhangjiajie": {"name": "张家界国家森林公园", "guide_name": "张家界AI智能导览数字人"},
+    "bingmayong":  {"name": "秦始皇帝陵博物院",   "guide_name": "兵马俑AI智能导览数字人"},
+    "mogaoku":     {"name": "敦煌莫高窟",         "guide_name": "莫高窟AI智能导览数字人"},
 }
 
 
 def get_scenic_config(scenic_id: str) -> dict:
-    return SCENIC_CONFIG.get(scenic_id, {"name": scenic_id, "guide_name": "小导"})
+    return SCENIC_CONFIG.get(scenic_id, {"name": scenic_id, "guide_name": "AI智能导览数字人"})
 
 
 def rewrite_query(query: str, history: list[dict]) -> str:

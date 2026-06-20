@@ -52,6 +52,25 @@ _AVATAR_PRESETS = [
     {"id": "M4_business","name": "商务讲解员", "gender": "male",   "style": "现代",
      "persona": "成熟稳重", "outfit": "商务正装", "age": "中年", "fit": "会展/商务景区",
      "preview": "/avatars/M4_business.jpg", "recommended": True},
+    # —— 万相甜美女导览身份库（2026-06-19，每个绑一个景区，studio 底板 dh_<scenic>__<scenic>__16x9）——
+    {"id": "dh_lingshan",    "name": "灵山·甜美讲解员",   "gender": "female", "style": "现代",
+     "persona": "甜美清纯·亲和", "outfit": "米白高领针织", "age": "青年", "fit": "灵山胜境",
+     "preview": "/avatars/dh_lingshan.jpg", "scenic": "lingshan", "recommended": True},
+    {"id": "dh_nihuawan",    "name": "拈花湾·甜美讲解员", "gender": "female", "style": "现代",
+     "persona": "甜美清纯·亲和", "outfit": "米白高领针织", "age": "青年", "fit": "拈花湾",
+     "preview": "/avatars/dh_nihuawan.jpg", "scenic": "nihuawan", "recommended": True},
+    {"id": "dh_xihu",        "name": "西湖·甜美讲解员",   "gender": "female", "style": "现代",
+     "persona": "甜美清纯·亲和", "outfit": "米白高领针织", "age": "青年", "fit": "西湖",
+     "preview": "/avatars/dh_xihu.jpg", "scenic": "xihu", "recommended": True},
+    {"id": "dh_mogaoku",     "name": "莫高窟·甜美讲解员", "gender": "female", "style": "现代",
+     "persona": "甜美清纯·亲和", "outfit": "米白高领针织", "age": "青年", "fit": "敦煌莫高窟",
+     "preview": "/avatars/dh_mogaoku.jpg", "scenic": "mogaoku", "recommended": True},
+    {"id": "dh_zhangjiajie", "name": "张家界·甜美讲解员", "gender": "female", "style": "现代",
+     "persona": "甜美清纯·亲和", "outfit": "米白高领针织", "age": "青年", "fit": "张家界",
+     "preview": "/avatars/dh_zhangjiajie.jpg", "scenic": "zhangjiajie", "recommended": True},
+    {"id": "dh_bingmayong",  "name": "兵马俑·甜美讲解员", "gender": "female", "style": "现代",
+     "persona": "甜美清纯·亲和", "outfit": "米白高领针织", "age": "青年", "fit": "秦始皇帝陵博物院",
+     "preview": "/avatars/dh_bingmayong.jpg", "scenic": "bingmayong", "recommended": True},
     # —— 历史/原 sweet_bob 系列 ——
     {"id": "female_sweet",   "name": "亲和讲解员", "gender": "female", "style": "现代",
      "persona": "亲切热忱", "outfit": "浅色活力装", "age": "青年", "fit": "现代/都市景区",
@@ -115,6 +134,9 @@ _DITTO_BASE = {
     "outfit_qipao": "sweet_outfit_qipao", "outfit_hanfu": "sweet_outfit_hanfu",
     "outfit_blazer": "sweet_outfit_blazer", "outfit_ethnic": "sweet_outfit_ethnic",
     "outfit_vest": "sweet_outfit_vest", "outfit_coat": "sweet_outfit_coat",
+    # 万相甜美女导览身份库（2026-06-19，每个绑一个景区）
+    **{i: i for i in ("dh_lingshan", "dh_nihuawan", "dh_xihu",
+                      "dh_mogaoku", "dh_zhangjiajie", "dh_bingmayong")},
 }
 
 
@@ -255,12 +277,23 @@ def _uploaded_backgrounds(conn) -> list[dict]:
              "source": "upload", "status": r["status"]} for r in rows]
 
 
+def _absolutize_preview(item: dict) -> dict:
+    """把相对 preview（/avatars/x.jpg）改写成绝对 URL，经 /avatar-preview/<id> 服务，
+    使队友管理端等跨域前端也能取到缩略图（自定义形象本就是绝对 URL，原样保留）。"""
+    prev = item.get("preview")
+    if isinstance(prev, str) and prev.startswith("/avatars/"):
+        item = dict(item)
+        item["preview"] = f"{PUBLIC_RAG_BASE}/digital-human/avatar-preview/{item['id']}"
+    return item
+
+
 @router.get("/presets")
 def get_presets():
     """返回可供选择的形象、音色与场景背景列表。"""
     with get_db() as conn:
         backgrounds = _BACKGROUND_PRESETS + _uploaded_backgrounds(conn)
-    return {"avatars": _effective_avatars(), "voices": _VOICE_PRESETS, "backgrounds": backgrounds}
+    avatars = [_absolutize_preview(a) for a in _effective_avatars()]
+    return {"avatars": avatars, "voices": _VOICE_PRESETS, "backgrounds": backgrounds}
 
 
 @router.get("/config")
@@ -488,10 +521,25 @@ def generate_avatar(body: GenerateAvatarIn):
     return {"ok": True, "scenic_id": body.scenic_id, "avatar": {**item, "ready": True}}
 
 
+# 静态形象缩略图目录（webapp 源/构建产物），供跨域绝对 URL 回退取图
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_STATIC_AVATAR_DIRS = [
+    _REPO_ROOT / "webapp" / "public" / "avatars",
+    _REPO_ROOT / "webapp" / "dist" / "avatars",
+]
+
+
 @router.get("/avatar-preview/{aid}")
 def avatar_preview(aid: str):
-    """AI 定制形象预览图（绝对 URL 引用，跨前端可达）。"""
+    """形象预览图（绝对 URL 引用，跨前端/跨域可达）。
+    先查 AI 定制目录；非定制形象回退到 webapp 静态缩略图（dh_<scenic> 等上景形象走这条）。"""
     p = _CUSTOM_DIR / f"{aid}.jpg"
+    if not p.is_file():
+        for d in _STATIC_AVATAR_DIRS:
+            cand = d / f"{aid}.jpg"
+            if cand.is_file():
+                p = cand
+                break
     if not p.is_file():
         raise HTTPException(status_code=404, detail=f"预览不存在: {aid}")
     return FileResponse(str(p), media_type="image/jpeg")

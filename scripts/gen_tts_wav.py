@@ -4,7 +4,7 @@ import numpy as np
 import dashscope
 from dashscope.audio.qwen_tts_realtime import QwenTtsRealtime, QwenTtsRealtimeCallback, AudioFormat
 
-TEXT = sys.argv[1] if len(sys.argv) > 1 else "大家好，我是灵山胜境的数字导览员慧昭，很高兴在这里为您导览。"
+TEXT = sys.argv[1] if len(sys.argv) > 1 else "大家好，我是灵山AI智能导览数字人，很高兴在这里为您导览。"
 OUT  = sys.argv[2] if len(sys.argv) > 2 else "/tmp/hero_tts.wav"
 VOICE = sys.argv[3] if len(sys.argv) > 3 else "Cherry"
 

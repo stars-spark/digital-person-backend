@@ -95,6 +95,9 @@ AVATAR_MAP = {
     "outfit_qipao":  "sweet_outfit_qipao",  "outfit_hanfu": "sweet_outfit_hanfu",
     "outfit_blazer": "sweet_outfit_blazer", "outfit_ethnic": "sweet_outfit_ethnic",
     "outfit_vest":   "sweet_outfit_vest",   "outfit_coat":  "sweet_outfit_coat",
+    # —— 万相甜美女导览身份库（2026-06-19，每个绑一个景区；底板 dh_<scenic>__<scenic>__<aspect>）——
+    **{i: i for i in ("dh_lingshan", "dh_nihuawan", "dh_xihu",
+                      "dh_mogaoku", "dh_zhangjiajie", "dh_bingmayong")},
 }
 DEFAULT_AVATAR = "sweet_bob_ditto"
 

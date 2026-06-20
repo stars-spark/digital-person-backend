@@ -13,7 +13,9 @@ export async function applyScenicTheme(scenic: string): Promise<string> {
     // 主色/点缀色都是中明度彩色 → 其上文字恒用近白，保证对比度
     root.style.setProperty('--primary-foreground', 'oklch(0.99 0.012 0)')
     root.style.setProperty('--sweet-foreground', 'oklch(0.99 0.012 0)')
-    return '智能导览'  // 纯角色定位：不再用文雅人名（慧昭/婉清…），全站统一「智能导览」（与数字人口播自我介绍一致）
+    // 数字人对外名 = 后端 guide_name（已统一「<景区简称>AI智能导览数字人」，去人名化）。
+    // 动态取值（品牌铁律），不再前端写死；取不到回退通用名。
+    return t.guide_name || '智能导览'
   } catch { return '智能导览' /* 取不到就用默认主题 */ }
 }
 
