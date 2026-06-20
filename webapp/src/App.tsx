@@ -34,7 +34,6 @@ import type { DarkMode } from '@/lib/theme'
 
 export default function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const bgCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
   const g = useGuide(videoRef)
   const [draft, setDraft] = useState('')
@@ -123,29 +122,6 @@ export default function App() {
     return () => window.removeEventListener('pagehide', onLeave)
   }, [onboarded, g])
 
-  // 舞台背景模糊填充：把竖版数字人流按 cover 画进小 canvas → CSS 放大模糊，铺满 16:9 横框两侧
-  // （单条 mpegts 流无法复制到第二个 <video>，故走 canvas 抽帧；前景视频 object-contain 居中、头不偏大）
-  useEffect(() => {
-    const v = videoRef.current, c = bgCanvasRef.current
-    if (!v || !c) return
-    const ctx = c.getContext('2d')
-    if (!ctx) return
-    let raf = 0, last = 0
-    const tick = (ts: number) => {
-      raf = requestAnimationFrame(tick)
-      if (ts - last < 90) return                 // ~11fps：背景够用、省电
-      last = ts
-      const vw = v.videoWidth, vh = v.videoHeight
-      const cw = c.width, ch = c.height
-      if (v.readyState < 2 || !vw) { ctx.clearRect(0, 0, cw, ch); return }  // 无帧→透明，露出渐变兜底
-      const s = Math.max(cw / vw, ch / vh)
-      const w = vw * s, h = vh * s
-      try { ctx.drawImage(v, (cw - w) / 2, (ch - h) / 2, w, h) } catch { /* 跨域只显示不读取，安全 */ }
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [])
-
   // 深色模式：挂载即套用，system 模式跟随系统切换
   useEffect(() => {
     applyDarkMode(dark)
@@ -204,16 +180,13 @@ export default function App() {
         {/* 数字人舞台 + 字幕（成组：脸在上、话在下；字幕为独立条，不遮画面） */}
         <div className="flex flex-col gap-2">
         <div className="relative mx-auto aspect-video w-full overflow-hidden rounded-[1.5rem] border bg-gradient-to-br from-primary/10 via-background to-sweet/10 shadow-[0_12px_44px_-14px_oklch(0.575_0.2_268_/_0.35)]">
-          {/* 数字人流为 720×1280 竖版；16:9 横框用「模糊填充」：背景=同画面 cover 放大模糊铺满两侧，
-              前景=完整竖版 object-contain 居中（头不偏大、零裁切）。⚠️横版底板就绪后改回 object-cover 即可 */}
-          <canvas ref={bgCanvasRef} width={384} height={216} aria-hidden
-            className="absolute inset-0 size-full scale-[1.18] object-cover blur-2xl" />
-          {connected && <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-black/10" />}
+          {/* 数字人流为 640×360 上景底板（16:9）：object-cover 满帧铺满，数字人完整站在景区实景里、
+              零黑边零模糊边（Flux 上景背景已烘进底板）。竖版底板若复用此页需另议取景。 */}
           <video
             ref={videoRef}
             playsInline
             webkit-playsinline="true"
-            className="relative z-10 size-full object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.42)]"
+            className="relative z-10 size-full object-cover"
             onWaiting={() => setVstall(true)}
             onPlaying={() => setVstall(false)}
           />
@@ -228,7 +201,7 @@ export default function App() {
               webkit-playsinline="true"
               onEnded={fadeOutClip}
               className={cn(
-                'absolute inset-0 z-30 size-full object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.42)] transition-opacity duration-500 ease-[var(--ease-out)]',
+                'absolute inset-0 z-30 size-full object-cover transition-opacity duration-500 ease-[var(--ease-out)]',
                 clipEnding ? 'opacity-0' : 'opacity-100',
               )}
             />
