@@ -23,6 +23,7 @@ from backend.api.asr import router as asr_router
 from backend.api.trip import router as trip_router
 from backend.api.tour import router as tour_router
 from backend.api.theme import router as theme_router
+from backend.api.handoff import router as handoff_router
 
 
 @asynccontextmanager
@@ -80,6 +81,7 @@ app.include_router(asr_router)
 app.include_router(trip_router)
 app.include_router(tour_router)
 app.include_router(theme_router)
+app.include_router(handoff_router)
 
 
 @app.get("/health")

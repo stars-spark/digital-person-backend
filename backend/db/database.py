@@ -7,6 +7,7 @@ SQLite 会话存储。
   scenic_theme  - 景区主题色覆盖（管理端 PUT 覆盖默认；客户端切景区时套用）
 """
 
+import datetime as _dt
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -128,6 +129,20 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_doc_scenic ON uploaded_docs(scenic_id)")
+        # 扫码接力 / 同游：大屏(或手机)把"对话+个性化"打成快照存一行，另一设备扫码 claim 即带走。
+        # 短时效(默认 5min)、不透明 token、过期即焚——快照本体不进 URL，只凭 token 取。
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS session_handoffs (
+                token      TEXT PRIMARY KEY,
+                scenic_id  TEXT NOT NULL DEFAULT 'lingshan',
+                snapshot   TEXT NOT NULL,
+                source     TEXT NOT NULL DEFAULT 'kiosk',
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now','localtime')),
+                expires_at TEXT NOT NULL,
+                claimed_at TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_handoff_exp ON session_handoffs(expires_at)")
         conn.commit()
 
 
@@ -217,3 +232,54 @@ def save_theme(scenic_id: str, name: str | None, primary: str | None, sweet: str
                  updated_at    = excluded.updated_at""",
             (scenic_id, name, primary, sweet),
         )
+
+
+# ─────────────────────────── 扫码接力 / 同游 ───────────────────────────
+# 时间戳统一 '%Y-%m-%d %H:%M:%S' 本地格式（与全表一致）→ 字符串字典序即时间序，可直接比较。
+_TS = "%Y-%m-%d %H:%M:%S"
+
+
+def save_handoff(token: str, scenic_id: str, snapshot: dict, source: str = "kiosk",
+                 ttl_seconds: int = 300) -> str:
+    """存一条接力快照，返回过期时刻。顺手清掉所有已过期行（惰性 GC，免后台任务）。"""
+    now = _dt.datetime.now()
+    expires = (now + _dt.timedelta(seconds=ttl_seconds)).strftime(_TS)
+    payload = json.dumps(snapshot, ensure_ascii=False)
+    with get_db() as conn:
+        conn.execute("DELETE FROM session_handoffs WHERE expires_at < ?", (now.strftime(_TS),))
+        conn.execute(
+            """INSERT OR REPLACE INTO session_handoffs
+               (token, scenic_id, snapshot, source, expires_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (token, scenic_id, payload, source, expires),
+        )
+    return expires
+
+
+def claim_handoff(token: str, single_use: bool = False) -> dict | None:
+    """凭 token 取接力快照。返回：
+       None               → token 不存在
+       {'expired': True}  → 已过期（顺手删除）
+       {'claimed': True}  → single_use 且已被领取过
+       {'snapshot':..., 'scenic_id':..., 'source':...} → 成功（标记 claimed_at）
+    """
+    now = _dt.datetime.now().strftime(_TS)
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT scenic_id, snapshot, source, expires_at, claimed_at "
+            "FROM session_handoffs WHERE token=?",
+            (token,),
+        ).fetchone()
+        if not row:
+            return None
+        if row["expires_at"] < now:
+            conn.execute("DELETE FROM session_handoffs WHERE token=?", (token,))
+            return {"expired": True}
+        if single_use and row["claimed_at"]:
+            return {"claimed": True}
+        conn.execute("UPDATE session_handoffs SET claimed_at=? WHERE token=?", (now, token))
+        try:
+            snap = json.loads(row["snapshot"])
+        except (TypeError, ValueError):
+            snap = {}
+        return {"snapshot": snap, "scenic_id": row["scenic_id"], "source": row["source"]}

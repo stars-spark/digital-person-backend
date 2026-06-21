@@ -1303,6 +1303,66 @@ POST /live/say
 
 ---
 
+## 7. 扫码接力 / 同游（跨设备带走对话与个性化）🆕
+
+把一台设备上的「对话历史 + 个性化画像」打成短时快照(token)，另一台设备扫码即接着逛。
+**双向通用**：大屏 Kiosk →手机（游客带走导览）、手机→手机（家人同游 / 换机续逛）。
+
+**机制**：源端 `create` 提交快照（它已渲染的对话 + 当前画像）→ 拿不透明 `token` →
+用**自己的 origin** 拼 `claim_url = <origin>/?h=<token>` → 由 `qr.png` 渲成二维码展示 →
+另一端扫码打开 `claim_url` → 前端读 `?h=` 调 `claim` 取回快照 → 注水画像(localStorage)+
+注入历史对话+跳过开场。**快照本体不进 URL，只凭 token 取**；TTL 默认 5min、过期即焚；
+TTL 内可重复 claim（容忍扫码重试）。隐私：公共大屏应**按需生成 + 倒计时自毁**，不常驻二维码。
+
+### 7.1 生成接力快照
+
+```
+POST /handoff/create
+{
+  "scenic_id": "lingshan",
+  "group_type": "family_kids",        // adult / family_kids / senior / couple
+  "lang": "zh",
+  "interests": ["history", "photo"],
+  "avatar_id": null,                   // 可选：形象/音色精调偏好（空=景区默认）
+  "voice_id": null,
+  "messages": [                        // 源端已渲染的对话，最近 N 轮（服务端截 40 条、过滤空文本）
+    { "role": "user", "text": "灵山大佛有多高" },
+    { "role": "assistant", "text": "灵山大佛高88米。", "emotion": "happy", "intent": "qa" }
+  ],
+  "trace": null,                       // 可选：足迹/明信片状态（手机→手机携带）
+  "source_session_id": null,           // 可选：不便序列化 messages 时，给源会话 id 由服务端回读 conversations
+  "poi": null,                         // 可选：深链接，接力后定位到某景点
+  "source": "kiosk",                   // kiosk | phone
+  "ttl": 300                           // 秒，30~1800，默认 300
+}
+→ 200 { "ok": true, "token": "zVMGib_nAIQ", "expires_in": 300, "claim_path": "/?h=zVMGib_nAIQ", "msg_count": 2 }
+```
+源端拿到 `token` 后：`claim_url = location.origin + claim_path`，二维码 = `GET /handoff/qr.png?data=<encodeURIComponent(claim_url)>`。
+
+### 7.2 领取接力快照
+
+```
+POST /handoff/claim
+{ "token": "zVMGib_nAIQ" }
+→ 200 { "ok": true, "scenic_id": "lingshan", "group_type": "family_kids", "lang": "zh",
+        "interests": ["history","photo"], "avatar_id": null, "voice_id": null,
+        "messages": [...], "trace": null, "poi": null, "source": "kiosk" }
+→ 404 { "ok": false, "reason": "not_found" }   // token 不存在
+→ 410 { "ok": false, "reason": "expired" }      // 已过期（顺手 GC）
+```
+前端 claim 成功后：写 localStorage（`lingjing.scenic/group/interests/lang/voice/avatar`）、
+把 `messages` 注入聊天流、`onboarded=1` 跳过开场；失败则正常进开场。
+
+### 7.3 二维码图片
+
+```
+GET /handoff/qr.png?data=<任意文本，通常是完整 claim_url>
+→ 200 image/png（segno 渲染，Cache-Control max-age=300）
+```
+源端传它自己 origin 拼好的 `claim_url` → 跨公网网关/局域网都扫得通（服务端无需知道公网地址）。
+
+---
+
 ## 附录：数据类型说明
 
 ### 情绪 `emotion` 枚举

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Microphone, Camera, ArrowUp, Sparkle, MapPin, CircleNotch, GearSix,
-  Compass, Lifebuoy, Medal, NavigationArrow, ChatCircleDots,
+  Compass, Lifebuoy, Medal, NavigationArrow, ChatCircleDots, ShareNetwork,
 } from '@phosphor-icons/react'
 import { useGuide, SCENICS } from '@/hooks/useGuide'
 import type { Meta } from '@/hooks/useGuide'
@@ -10,8 +10,11 @@ import {
 } from '@/components/ui/select'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
-import { makeT } from '@/lib/i18n'
+import { makeT, GROUPS } from '@/lib/i18n'
+import { claimHandoff } from '@/lib/api'
 import Onboarding from '@/components/Onboarding'
+import HandoffBanner from '@/components/HandoffBanner'
+import ShareSheet from '@/components/ShareSheet'
 import TodayCard from '@/components/TodayCard'
 import SettingsSheet from '@/components/SettingsSheet'
 import TourSheet from '@/components/TourSheet'
@@ -52,6 +55,12 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [routeMapOpen, setRouteMapOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  // 扫码接力：URL 带 ?h=<token> → 进页先 claim、注水画像+历史，再进主屏（避免开场闪现）
+  const hasHandoffToken = useMemo(() => { try { return new URLSearchParams(location.search).has('h') } catch { return false } }, [])
+  const [claiming, setClaiming] = useState(hasHandoffToken)
+  const [handoff, setHandoff] = useState<{ title: string; detail: string; tone: 'ok' | 'warn' } | null>(null)
+  const claimedRef = useRef(false)
   // 「跟我游」：有地图路线数据的景区 → 开地图版；否则回退清单版 TourSheet
   const openGuide = () => {
     if (SCENIC_ROUTES[g.scenic]) { g.track('feature_open', { feature: 'routemap' }); setRouteMapOpen(true) }
@@ -132,6 +141,61 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange)
   }, [dark])
 
+  // 扫码接力：进页 claim → 注水画像/历史 → 直接进主屏 + 顶部提示条（失败则正常开场）
+  useEffect(() => {
+    if (!hasHandoffToken || claimedRef.current) return
+    claimedRef.current = true
+    const token = new URLSearchParams(location.search).get('h') || ''
+    // 立刻抹掉 URL 里的 ?h，避免刷新重复 claim（已领取会报 409）
+    try { history.replaceState(null, '', location.pathname + location.hash) } catch { /* ignore */ }
+    ;(async () => {
+      const res = await claimHandoff(token)
+      if (res.ok && res.snapshot) {
+        const snap = res.snapshot
+        const n = g.importHandoff(snap)
+        setOnboarded(true)
+        try { localStorage.setItem('lingjing.onboarded', '1') } catch { /* ignore */ }
+        g.track('handoff_claim', { source: snap.source || 'kiosk', msgs: n })
+        const sName = SCENICS.find((s) => s.id === snap.scenic_id)?.name || snap.scenic_id
+        const grp = GROUPS.find((x) => x.id === snap.group_type)?.label[g.lang] || ''
+        const detail = [grp, n ? `${n} 条对话已带过来` : '偏好已同步'].filter(Boolean).join(' · ')
+        setHandoff({ title: '已接力到这台手机', detail: `${sName} · ${detail}`, tone: 'ok' })
+      } else {
+        const expired = res.reason === 'expired' || res.reason === 'claimed'
+        setHandoff({
+          title: expired ? '二维码已过期' : '接力未成功',
+          detail: '已为你正常开启导览，可在大屏或同伴手机重新生成',
+          tone: 'warn',
+        })
+      }
+      setClaiming(false)
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // 接力提示条定时自动收起（成功停留久一点，过期提示短）
+  useEffect(() => {
+    if (!handoff) return
+    const id = setTimeout(() => setHandoff(null), handoff.tone === 'ok' ? 7000 : 5000)
+    return () => clearTimeout(id)
+  }, [handoff])
+
+  // 接力进行中：先显轻量 splash，避免开场页一闪
+  if (claiming) {
+    return (
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-5 bg-background px-8 text-center">
+        <div className="relative flex size-20 items-center justify-center">
+          <span className="absolute inset-0 rounded-full bg-primary/15 blur-xl motion-safe:animate-[pulse_2.2s_var(--ease-out)_infinite]" />
+          <span className="relative flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/75 text-2xl font-semibold text-primary-foreground shadow-lg shadow-primary/30">
+            游
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-[14px] font-medium text-foreground/70">
+          <CircleNotch className="size-4 animate-spin" /> 正在接力你的导览…
+        </div>
+      </div>
+    )
+  }
+
   if (!onboarded) {
     return (
       <Onboarding
@@ -168,6 +232,13 @@ export default function App() {
           </SelectContent>
         </Select>
         <button
+          aria-label="share"
+          onClick={() => { g.track('feature_open', { feature: 'share' }); setShareOpen(true) }}
+          className="flex size-9 items-center justify-center rounded-full bg-muted text-muted-foreground transition active:scale-90"
+        >
+          <ShareNetwork className="size-[18px]" />
+        </button>
+        <button
           aria-label="settings"
           onClick={() => setSettingsOpen(true)}
           className="flex size-9 items-center justify-center rounded-full bg-muted text-muted-foreground transition active:scale-90"
@@ -175,6 +246,10 @@ export default function App() {
           <GearSix className="size-[18px]" />
         </button>
       </header>
+
+      {handoff && (
+        <HandoffBanner title={handoff.title} detail={handoff.detail} tone={handoff.tone} onDismiss={() => setHandoff(null)} />
+      )}
 
       <main className="flex flex-1 flex-col gap-4 px-4 pb-4 pt-4">
         {/* 数字人舞台 + 字幕（成组：脸在上、话在下；字幕为独立条，不遮画面） */}
@@ -345,6 +420,11 @@ export default function App() {
         open={profileOpen} onOpenChange={setProfileOpen} lang={g.lang}
         groupType={g.groupType} setGroupType={g.setGroupType}
         interests={g.interests} setInterests={g.setInterests}
+      />
+      <ShareSheet
+        open={shareOpen} onOpenChange={setShareOpen}
+        scenic={g.scenic} scenicName={scenicName} groupType={g.groupType} lang={g.lang}
+        interests={g.interests} voiceId={g.voiceId} avatarPref={g.avatarPref} messages={g.messages}
       />
     </div>
   )

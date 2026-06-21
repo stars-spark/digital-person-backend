@@ -526,6 +526,34 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
   const recordRouteDone = useCallback((id: string) => setTraceState(trace.recordRouteDone(id)), [])
   const recordRating = useCallback((score: number) => setTraceState(trace.recordRating(score)), [])
 
+  // ── 扫码接力：把另一设备的快照注水到本机（画像 + 历史对话）──────────────
+  // 个性化(景区/同行人/兴趣/语言/音色/形象)直接套用 → localStorage 持久化由现有 effect 负责；
+  // 历史对话注入聊天流，最后一条助手语上字幕(贴脸)，让"接着上一句继续"自然成立。
+  const importHandoff = useCallback((snap: api.HandoffSnapshot): number => {
+    if (snap.scenic_id) setScenic(snap.scenic_id)
+    if (snap.group_type) setGroupType(snap.group_type)
+    if (Array.isArray(snap.interests)) setInterests(snap.interests)
+    if (snap.lang) setLang(snap.lang as Lang)
+    if (snap.voice_id) setVoiceId(snap.voice_id)
+    if (snap.avatar_id) setAvatarPref(snap.avatar_id)
+    const imported: Msg[] = (snap.messages || [])
+      .filter((m) => (m.text || '').trim())
+      .map((m) => ({
+        id: newId(),
+        role: m.role === 'user' ? 'user' : 'assistant',
+        text: m.text,
+        meta: (m.emotion || m.intent)
+          ? { emotion: m.emotion || undefined, intent: m.intent || undefined }
+          : undefined,
+      }))
+    if (imported.length) {
+      setMessages(imported)
+      const lastA = [...imported].reverse().find((m) => m.role === 'assistant')
+      if (lastA) { setReply(lastA.text); setMeta(lastA.meta || {}); setCaption(lastA.text); setCaptionStreaming(false) }
+    }
+    return imported.length
+  }, [setVoiceId, setAvatarPref])
+
   return {
     scenic, setScenic, groupType, setGroupType, interests, setInterests, lang, setLang, guideName,
     voiceId, setVoiceId, avatarPref, setAvatarPref,
@@ -535,5 +563,6 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
     caption, captionStreaming,
     recos, recoBasis, recosLoading, loadRecos,
     connect, ask, toggleVoice, photo, isIOS,
+    importHandoff,
   }
 }

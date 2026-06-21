@@ -290,3 +290,50 @@ export async function recommend(body: {
     return await r.json()
   } catch { return { cards: [], basis: [] } }
 }
+
+// —— 扫码接力 / 同游（后端 /handoff）——
+// 把本机「对话 + 个性化画像」打成短时快照(token)，另一台设备扫码即接着逛：
+// 大屏→手机（带走导览）、手机→手机（家人同游）双向通用。见 API_DOC「扫码接力」节。
+export interface HandoffMsg { role: 'user' | 'assistant'; text: string; emotion?: string | null; intent?: string | null }
+export interface HandoffSnapshot {
+  scenic_id: string; group_type: string; lang: string; interests: string[]
+  avatar_id?: string | null; voice_id?: string | null
+  messages: HandoffMsg[]; trace?: unknown; poi?: string | null; source?: string
+}
+export async function createHandoff(body: {
+  scenic: string; groupType: string; lang: string; interests: string[]
+  voiceId?: string; avatarPref?: string; messages: HandoffMsg[]; trace?: unknown; source?: string
+}): Promise<{ ok: boolean; token?: string; expiresIn?: number; msgCount?: number }> {
+  try {
+    const r = await fetch('/rag/handoff/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scenic_id: body.scenic, group_type: body.groupType, lang: body.lang, interests: body.interests,
+        voice_id: body.voiceId || null, avatar_id: body.avatarPref || null,
+        messages: body.messages, trace: body.trace ?? null, source: body.source || 'phone',
+      }),
+    })
+    const d = await r.json().catch(() => ({}))
+    return { ok: Boolean(d?.ok), token: d?.token, expiresIn: d?.expires_in, msgCount: d?.msg_count }
+  } catch { return { ok: false } }
+}
+export async function claimHandoff(token: string): Promise<{ ok: boolean; reason?: string; snapshot?: HandoffSnapshot }> {
+  try {
+    const r = await fetch('/rag/handoff/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!d?.ok) return { ok: false, reason: d?.reason || (r.status === 410 ? 'expired' : 'failed') }
+    // 后端把快照字段平铺在响应里（{ ok, scenic_id, ... }），剥掉 ok 即快照
+    const { ok: _ok, ...snap } = d
+    return { ok: true, snapshot: snap as HandoffSnapshot }
+  } catch { return { ok: false, reason: 'network' } }
+}
+// 二维码图片 URL：用本机 origin 拼完整 claim_url 交给后端渲染 → 跨公网网关/局域网都扫得通。
+export function handoffQrUrl(token: string): string {
+  const claim = `${location.origin}/?h=${encodeURIComponent(token)}`
+  return `/rag/handoff/qr.png?data=${encodeURIComponent(claim)}`
+}
