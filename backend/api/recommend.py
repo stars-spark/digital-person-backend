@@ -16,7 +16,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.llm.client import chat
-from backend.rag.pipeline import get_scenic_config
+from backend.rag.pipeline import get_scenic_config, _situation_dict, _situation_key
 from backend.api.tour import TOURS, FACILITIES
 from backend.analytics.env_context import env_brief
 from backend.analytics.crowd import crowd_brief
@@ -25,6 +25,22 @@ router = APIRouter(prefix="/recommend", tags=["recommend"])
 
 _GROUP = {"adult": "独自/朋友出游", "family_kids": "亲子家庭（带孩子）", "senior": "老年长辈", "couple": "情侣出游"}
 _INTEREST = {"history": "历史人文", "nature": "自然风光", "photo": "拍照打卡", "food": "特色美食", "culture": "禅意文化"}
+# 自身情况标签 → 人话短语（仅非默认值入推荐 prompt / basis）
+_SIT_LABELS = {
+    "age": {"teen": "青少年", "middle": "中年", "elder": "长辈"},
+    "pace": {"half": "半天精华", "deep": "深度慢游"},
+    "mobility": {"stroller": "推婴儿车", "wheelchair": "需无障碍", "hiker": "爱徒步"},
+    "purpose": {"photo": "拍照打卡", "kids_fun": "遛娃", "pray": "祈福参拜", "study": "研学"},
+    "first_time": {"return": "故地重游"},
+}
+_SIT_DIMS = ("age", "pace", "mobility", "purpose", "first_time")
+
+
+def _sit_labels(situation: dict | None) -> list[str]:
+    """非默认自身情况 → 人话标签列表（顺序固定）。全默认/None → []。"""
+    if not situation:
+        return []
+    return [lbl for d in _SIT_DIMS if (lbl := _SIT_LABELS.get(d, {}).get(situation.get(d)))]
 _FACILITY_LABEL = {"toilet": "卫生间", "food": "餐饮", "rest": "休息点", "medical": "医务点", "baby": "母婴室", "accessible": "无障碍设施"}
 
 _JSON_ARR = re.compile(r"\[.*\]", re.S)
@@ -37,6 +53,7 @@ class RecoRequest(BaseModel):
     group_type: str = "adult"
     interests: list[str] = []
     lang: str = "zh"
+    situation: dict | None = None   # 自身情况标签（age/pace/mobility/purpose/first_time）
 
 
 class RecoCard(BaseModel):
@@ -68,11 +85,12 @@ def _facilities(scenic_id: str) -> list[str]:
     return [_FACILITY_LABEL.get(k, k) for k in fac.keys()]
 
 
-def _generate(scenic_id: str, group_type: str, interests: list[str]) -> list[dict]:
+def _generate(scenic_id: str, group_type: str, interests: list[str], situation: dict | None = None) -> list[dict]:
     cfg = get_scenic_config(scenic_id)
     guide = cfg.get("guide_name") or cfg.get("name") or "导游"
     group_label = _GROUP.get(group_type, "游客")
     interest_labels = [_INTEREST.get(i, i) for i in interests]
+    sit_labels = _sit_labels(situation)
     spots = _real_spots(scenic_id)
     facs = _facilities(scenic_id)
     env = env_brief(scenic_id) or ""
@@ -80,7 +98,7 @@ def _generate(scenic_id: str, group_type: str, interests: list[str]) -> list[dic
 
     system = (
         f"你是{cfg.get('name','本景区')}的金牌导游{guide}。任务：为一位游客在首页主动挑 3 张最贴合的推荐卡，"
-        f"像真人导游一样'懂他'。务必结合：同行人、兴趣、此刻时间/天气/客流。\n"
+        f"像真人导游一样'懂他'。务必结合：同行人、兴趣、自身情况、此刻时间/天气/客流。\n"
         f"硬规则：①只推荐下面列出的**真实景点/活动/设施**，不许编造；②每张要有一句具体的'为什么推荐你'（第二人称'你'，≤28字）；"
         f"③basis 给 2~3 个依据短标签（如 亲子/历史/傍晚/人少/避晒）；④action 取 ask/route/facility 之一，"
         f"ask 时 query 写一句游客可直接问导游的话；⑤icon 从 theater/photo/food/walk/temple/rest/star 里选最贴切的。\n"
@@ -88,7 +106,8 @@ def _generate(scenic_id: str, group_type: str, interests: list[str]) -> list[dic
         f'[{{"icon":"...","title":"≤12字","reason":"...","basis":["..."],"action":"ask","query":"..."}}]'
     )
     user = (
-        f"游客画像：同行人={group_label}；兴趣={('、'.join(interest_labels)) or '未指定'}。\n"
+        f"游客画像：同行人={group_label}；兴趣={('、'.join(interest_labels)) or '未指定'}；"
+        f"自身情况={('、'.join(sit_labels)) or '常规'}。\n"
         f"此刻：{env}　{crowd}\n"
         f"本景区真实景点/活动：{'；'.join(spots)}\n"
         f"可用设施：{('、'.join(facs)) or '无'}\n"
@@ -122,23 +141,26 @@ def _generate(scenic_id: str, group_type: str, interests: list[str]) -> list[dic
 @router.post("/", response_model=RecoResponse)
 async def recommend(req: RecoRequest) -> RecoResponse:
     interests = [i for i in req.interests if isinstance(i, str)][:6]
+    sit = _situation_dict(req.situation)
+    sit_key = _situation_key(sit)   # 非默认情境进缓存键，避免不同情境串卡；全默认→""不改键
     bucket = int(time.time() // _TTL)
-    key = (req.scenic_id, req.group_type, tuple(sorted(interests)), bucket)
+    key = (req.scenic_id, req.group_type, tuple(sorted(interests)), sit_key, bucket)
     cached = _cache.get(key)
     if cached and cached[0] == bucket:
         cards = cached[1]
     else:
         try:
-            cards = _generate(req.scenic_id, req.group_type, interests)
+            cards = _generate(req.scenic_id, req.group_type, interests, sit)
         except Exception:
             cards = []
         if cards:
             _cache[key] = (bucket, cards)
 
-    # 整体依据（画像 + 此刻），给前端「为你定制」标题旁的依据 chip
+    # 整体依据（画像 + 自身情况 + 此刻），给前端「为你定制」标题旁的依据 chip
     basis = []
     if req.group_type in _GROUP:
         basis.append(_GROUP[req.group_type].split("（")[0])
     basis += [_INTEREST[i] for i in interests if i in _INTEREST][:2]
+    basis += _sit_labels(sit)[:2]
 
     return RecoResponse(cards=[RecoCard(**c) for c in cards], basis=basis)

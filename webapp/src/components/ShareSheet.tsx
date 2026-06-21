@@ -6,15 +6,16 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/u
 import { createHandoff, handoffQrUrl } from '@/lib/api'
 import type { HandoffMsg } from '@/lib/api'
 import type { Msg } from '@/hooks/useGuide'
+import type { Situation } from '@/lib/i18n'
 
-// 「邀请同伴 / 把导览带到另一台手机」：把本机对话+画像打成短时接力码，
+// 「邀请同伴 / 把导览带到另一台手机」：把本机对话+画像（含自身情况标签）打成短时接力码，
 // 同伴扫码即接着逛（家人同游 / 换机续逛）。复用后端 /handoff，与大屏→手机同一机制。
 export default function ShareSheet({
-  open, onOpenChange, scenic, scenicName, groupType, lang, interests, voiceId, avatarPref, messages,
+  open, onOpenChange, scenic, scenicName, groupType, lang, interests, voiceId, avatarPref, situation, messages,
 }: {
   open: boolean; onOpenChange: (o: boolean) => void
   scenic: string; scenicName: string; groupType: string; lang: string
-  interests: string[]; voiceId?: string; avatarPref?: string; messages: Msg[]
+  interests: string[]; voiceId?: string; avatarPref?: string; situation?: Partial<Situation>; messages: Msg[]
 }) {
   const [state, setState] = useState<'loading' | 'ready' | 'expired' | 'error'>('loading')
   const [token, setToken] = useState('')
@@ -28,11 +29,11 @@ export default function ShareSheet({
       .filter((m) => !m.thinking && (m.text || '').trim())
       .slice(-40)
       .map((m) => ({ role: m.role, text: m.text, emotion: m.meta?.emotion, intent: m.meta?.intent }))
-    const r = await createHandoff({ scenic, groupType, lang, interests, voiceId, avatarPref, messages: hist, source: 'phone' })
+    const r = await createHandoff({ scenic, groupType, lang, interests, voiceId, avatarPref, situation, messages: hist, source: 'phone' })
     if (r.ok && r.token) {
       setToken(r.token); setLeft(r.expiresIn || 300); setMsgCount(r.msgCount ?? hist.length); setState('ready')
     } else setState('error')
-  }, [scenic, groupType, lang, interests, voiceId, avatarPref, messages])
+  }, [scenic, groupType, lang, interests, voiceId, avatarPref, situation, messages])
 
   // 打开即生成（每次打开都拿一张新鲜的短时码）
   useEffect(() => { if (open) gen() }, [open]) // eslint-disable-line react-hooks/exhaustive-deps

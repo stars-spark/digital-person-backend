@@ -32,6 +32,16 @@ const ZH: Dict = {
   set_appearance: '外观', mode_light: '浅色', mode_dark: '深色', mode_system: '跟随系统',
   // quick funcs
   qf_photo: '拍照定位', qf_tour: '跟我游', qf_gps: '定位', qf_facility: '设施', qf_trace: '足迹',
+  // onboarding 向导（多步引导）
+  ob_back: '返回', ob_next: '下一步', ob_start_btn: '开始', ob_skip_short: '跳过',
+  ob_step1_title: '想逛哪个景区？', ob_step1_sub: '选好了，我就是这里的专属导游',
+  ob_step2_title: '和谁一起来？', ob_step2_sub: '我会照顾到同行的每个人',
+  ob_first_q: '第一次来吗？',
+  ob_step3_title: '打算怎么逛？', ob_step3_sub: '按你的节奏和脚力来安排',
+  ob_pace_q: '游览节奏', ob_mobility_q: '出行方式',
+  ob_step4_title: '此行最想要什么？', ob_step4_sub: '说说心情，我把行程调成你的味道',
+  ob_age_q: '你的年龄段',
+  ob_step5_title: '还喜欢点什么？', ob_step5_sub: '挑几个感兴趣的，多讲你爱听的（可多选）',
 }
 const EN: Dict = {
   subtitle: 'AI Digital Tour Guide',
@@ -52,6 +62,15 @@ const EN: Dict = {
   set_avatar: 'Digital Guide', set_avatar_sub: 'Look · outfit · voice, fine-tune on defaults',
   set_appearance: 'Appearance', mode_light: 'Light', mode_dark: 'Dark', mode_system: 'System',
   qf_photo: 'Photo Locate', qf_tour: 'Tour', qf_gps: 'Locate', qf_facility: 'Spots', qf_trace: 'Trail',
+  ob_back: 'Back', ob_next: 'Next', ob_start_btn: 'Start', ob_skip_short: 'Skip',
+  ob_step1_title: 'Which scenic area?', ob_step1_sub: 'Pick one and I’m your private guide here',
+  ob_step2_title: 'Who’s with you?', ob_step2_sub: 'I’ll look after everyone in your group',
+  ob_first_q: 'First time here?',
+  ob_step3_title: 'How do you want to explore?', ob_step3_sub: 'I’ll plan around your pace and energy',
+  ob_pace_q: 'Pace', ob_mobility_q: 'Getting around',
+  ob_step4_title: 'What do you want most?', ob_step4_sub: 'Tell me the vibe — I’ll tune the trip to it',
+  ob_age_q: 'Your age group',
+  ob_step5_title: 'Anything you love?', ob_step5_sub: 'Pick a few — I’ll talk more about what you like (multi-select)',
 }
 const JA: Dict = {
   subtitle: 'AI デジタルガイド',
@@ -72,6 +91,15 @@ const JA: Dict = {
   set_avatar: 'ガイドの姿', set_avatar_sub: '姿・衣装・声をカスタマイズ',
   set_appearance: '外観', mode_light: 'ライト', mode_dark: 'ダーク', mode_system: 'システム',
   qf_photo: '写真で位置', qf_tour: '巡る', qf_gps: '位置', qf_facility: '施設', qf_trace: '足あと',
+  ob_back: '戻る', ob_next: '次へ', ob_start_btn: 'はじめる', ob_skip_short: 'スキップ',
+  ob_step1_title: 'どの観光地へ？', ob_step1_sub: '選べば、ここ専属のガイドになります',
+  ob_step2_title: '誰と一緒？', ob_step2_sub: '同行の皆さんに気を配ります',
+  ob_first_q: '初めてですか？',
+  ob_step3_title: 'どう巡りますか？', ob_step3_sub: 'あなたのペースと体力に合わせます',
+  ob_pace_q: 'ペース', ob_mobility_q: '移動手段',
+  ob_step4_title: '今回いちばん欲しいのは？', ob_step4_sub: '気分を教えて、旅をその色に',
+  ob_age_q: '年齢層',
+  ob_step5_title: '好きなものは？', ob_step5_sub: 'いくつか選んで、好きな話を多めに（複数選択可）',
 }
 const KO: Dict = {
   subtitle: 'AI 디지털 가이드',
@@ -92,6 +120,15 @@ const KO: Dict = {
   set_avatar: '가이드 모습', set_avatar_sub: '모습·의상·목소리 맞춤 설정',
   set_appearance: '화면', mode_light: '라이트', mode_dark: '다크', mode_system: '시스템',
   qf_photo: '사진 위치', qf_tour: '투어', qf_gps: '위치', qf_facility: '시설', qf_trace: '발자취',
+  ob_back: '뒤로', ob_next: '다음', ob_start_btn: '시작', ob_skip_short: '건너뛰기',
+  ob_step1_title: '어느 관광지로?', ob_step1_sub: '고르면 여기 전담 가이드가 될게요',
+  ob_step2_title: '누구와 함께?', ob_step2_sub: '동행 모두를 살펴드릴게요',
+  ob_first_q: '처음 오셨나요?',
+  ob_step3_title: '어떻게 둘러볼까요?', ob_step3_sub: '속도와 체력에 맞춰 짤게요',
+  ob_pace_q: '속도', ob_mobility_q: '이동 방식',
+  ob_step4_title: '이번 여행에서 가장 원하는 건?', ob_step4_sub: '기분을 알려주면 거기에 맞출게요',
+  ob_age_q: '연령대',
+  ob_step5_title: '좋아하는 게 있나요?', ob_step5_sub: '몇 개 골라요 — 좋아하는 얘기를 더 해드릴게요 (다중 선택)',
 }
 const DICTS: Record<Lang, Dict> = { zh: ZH, en: EN, ja: JA, ko: KO }
 
@@ -118,4 +155,39 @@ export const INTERESTS: { id: string; label: Record<Lang, string> }[] = [
   { id: 'photo', label: { zh: '拍照打卡', en: 'Photo Spots', ja: '撮影', ko: '사진' } },
   { id: 'food', label: { zh: '特色美食', en: 'Food', ja: 'グルメ', ko: '음식' } },
   { id: 'culture', label: { zh: '禅意文化', en: 'Culture', ja: '文化', ko: '문화' } },
+]
+
+// ── 自身情况标签（多步 onboarding 新增 5 维）：默认值=中性，使老画像/未选时行为零变化，
+//    后端缓存键也逐字节不变（默认值→空哈希，详见后端 _situation_key）。每维都拉动真实杠杆，非装饰。──
+export interface Situation { age: string; pace: string; mobility: string; purpose: string; first_time: string }
+export const SIT_DEFAULTS: Situation = { age: 'youth', pace: 'day', mobility: 'normal', purpose: 'relax', first_time: 'first' }
+
+type Opt = { id: string; label: Record<Lang, string> }
+export const AGES: Opt[] = [
+  { id: 'teen',   label: { zh: '青少年', en: 'Teen', ja: '青少年', ko: '청소년' } },
+  { id: 'youth',  label: { zh: '青年', en: 'Youth', ja: '青年', ko: '청년' } },
+  { id: 'middle', label: { zh: '中年', en: 'Middle-aged', ja: '中年', ko: '중년' } },
+  { id: 'elder',  label: { zh: '长者', en: 'Senior', ja: '年配', ko: '어르신' } },
+]
+export const PACES: Opt[] = [
+  { id: 'half', label: { zh: '半天精华', en: 'Half-day', ja: '半日', ko: '반나절' } },
+  { id: 'day',  label: { zh: '玩一整天', en: 'Full day', ja: 'まる一日', ko: '하루 종일' } },
+  { id: 'deep', label: { zh: '深度慢游', en: 'Deep & slow', ja: 'じっくり', ko: '깊이 천천히' } },
+]
+export const MOBILITIES: Opt[] = [
+  { id: 'stroller',   label: { zh: '推婴儿车', en: 'Stroller', ja: 'ベビーカー', ko: '유모차' } },
+  { id: 'wheelchair', label: { zh: '需无障碍', en: 'Step-free', ja: 'バリアフリー', ko: '무장애' } },
+  { id: 'normal',     label: { zh: '步行自如', en: 'Walk freely', ja: '普通に歩ける', ko: '자유 보행' } },
+  { id: 'hiker',      label: { zh: '能爬山徒步', en: 'Hiking-fit', ja: '山も登れる', ko: '등산 가능' } },
+]
+export const PURPOSES: Opt[] = [
+  { id: 'photo',    label: { zh: '拍照打卡', en: 'Photos', ja: '撮影', ko: '사진' } },
+  { id: 'kids_fun', label: { zh: '遛娃带玩', en: 'Kids fun', ja: '子供と', ko: '아이와' } },
+  { id: 'pray',     label: { zh: '祈福参拜', en: 'Praying', ja: '参拝', ko: '기원' } },
+  { id: 'relax',    label: { zh: '休闲放松', en: 'Relax', ja: 'のんびり', ko: '휴식' } },
+  { id: 'study',    label: { zh: '研学求知', en: 'Learn', ja: '学び', ko: '학습' } },
+]
+export const FIRSTTIMES: Opt[] = [
+  { id: 'first',  label: { zh: '第一次来', en: 'First time', ja: '初めて', ko: '처음' } },
+  { id: 'return', label: { zh: '故地重游', en: 'Been before', ja: '再訪', ko: '재방문' } },
 ]

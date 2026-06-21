@@ -41,6 +41,7 @@ class CreateReq(BaseModel):
     source_session_id: str | None = None  # 源会话 id：messages 为空时由服务端回读历史
     poi: str | None = None               # 深链接：接力后定位到某景点
     source: str = "kiosk"                # kiosk | phone
+    situation: dict | None = None        # 自身情况标签 5 维（手机→手机时携带，可空）
     ttl: int = 300
 
 
@@ -89,6 +90,11 @@ def create(req: CreateReq):
         "poi": req.poi,
         "source": req.source,
     }
+    # 自身情况标签平铺进快照顶层（claim 平铺返回 → 前端 importHandoff 按 snap.<dim> 注水）；仅带有值的维度
+    for k in ("age", "pace", "mobility", "purpose", "first_time"):
+        v = (req.situation or {}).get(k)
+        if v:
+            snapshot[k] = v
     token = secrets.token_urlsafe(8)
     ttl = max(30, min(int(req.ttl or 300), 1800))
     save_handoff(token, req.scenic_id, snapshot, source=req.source, ttl_seconds=ttl)

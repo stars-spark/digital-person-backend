@@ -286,6 +286,7 @@ class AskIn(BaseModel):
     interrupt: bool = True         # 新提问默认打断数字人上一句未播完的话
     voice_id: str | None = None    # 游客精调音色（覆盖景区默认配置；presets 的 voice_id）
     screen: str = "main"           # 'main'=手机端 16:9(8010)；'portrait'=大屏竖版 9:16(8011)
+    situation: dict | None = None  # 自身情况标签（age/pace/mobility/purpose/first_time），透传 RAG
 
 
 async def _resolve_config(client: httpx.AsyncClient, scenic_id: str) -> tuple[str, str, str]:
@@ -425,6 +426,7 @@ async def _run_ask(body: AskIn, emit):
                     "lang": body.lang,
                     "fast": body.fast,
                     "stream": True,
+                    "situation": body.situation,
                 },
             ) as resp:
                 resp.raise_for_status()

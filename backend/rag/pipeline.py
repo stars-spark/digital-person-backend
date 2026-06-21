@@ -31,6 +31,41 @@ _CROWD_INTENTS = {Intent.NAVIGATION, Intent.RECOMMEND}
 _FAST_INTENTS = {Intent.NAVIGATION, Intent.RECOMMEND, Intent.EMPATHY, Intent.CHITCHAT}
 
 
+# ── 自身情况标签（5 维）：默认值=中性。缓存键的 back-compat 是本模块最关键的正确性点 ──
+_SIT_DEFAULTS = {"age": "youth", "pace": "day", "mobility": "normal", "purpose": "relax", "first_time": "first"}
+_SIT_DIMS = ("age", "pace", "mobility", "purpose", "first_time")
+
+
+def _situation_dict(situation) -> dict | None:
+    """归一化 situation（pydantic 模型 / dict / None）为 dict，便于下游统一处理。"""
+    if not situation:
+        return None
+    if isinstance(situation, dict):
+        return situation
+    if hasattr(situation, "model_dump"):
+        return situation.model_dump()
+    if hasattr(situation, "dict"):
+        return situation.dict()
+    return None
+
+
+def _situation_key(situation: dict | None) -> str:
+    """情境缓存键：仅非默认值参与（维度顺序固定→确定性）。全默认/None → "" 。"""
+    if not situation:
+        return ""
+    return ",".join(
+        f"{d}={situation[d]}" for d in _SIT_DIMS
+        if situation.get(d) and situation[d] != _SIT_DEFAULTS[d]
+    )
+
+
+def _cache_query(group_type: str, lang: str, sit_key: str, query: str) -> str:
+    """组装缓存键。**sit_key 为空时不加分隔符** → 与历史键 f"{group_type}::{lang}::{query}"
+    逐字节一致 → 老缓存命中、零失效、零准确率影响；非默认情境则得到独立键，不串答。"""
+    base = f"{group_type}::{lang}::"
+    return f"{base}{sit_key}::{query}" if sit_key else f"{base}{query}"
+
+
 def _directive_with_context(intent: Intent, scenic_id: str) -> str:
     """意图指令 +（路线/推荐时）实时客流 + 时间天气环境上下文。"""
     directive = intent_directive(intent)
@@ -84,16 +119,19 @@ def answer(
     fast: bool = False,
     lang: str = "auto",
     group_type: str = "adult",
+    situation=None,
 ) -> dict:
     """
     同步问答。fast=True 使用 qwen-turbo（延迟减半，适合简单问答）。
     lang: "auto"（跟随提问语言）或语言代码（en/ja/ko…）强制指定回答语言。
     group_type: 同行关系（adult/family_kids/senior/couple），切换叙事人格。
+    situation: 自身情况标签（age/pace/mobility/purpose/first_time），按非默认值调讲解侧重。
     返回: { reply, emotion, sources, context_used, intent }
     """
     history = history or []
-    # 按 人格 + 语言 隔离缓存，避免跨人格/跨语种串答
-    cache_query = f"{group_type}::{lang}::{query}"
+    sit = _situation_dict(situation)
+    # 按 人格 + 语言 + 自身情况 隔离缓存，避免串答；情境全默认时键与原状逐字节一致（零失效）
+    cache_query = _cache_query(group_type, lang, _situation_key(sit), query)
     intent = classify(query, history)  # Orchestrator 分派：决定走哪条处理链路
     fast = fast or intent in _FAST_INTENTS  # 生成性意图自动提速（qwen-turbo）
     # 路线/推荐含实时客流（随时段变），不缓存，避免冻结错峰建议
@@ -118,7 +156,7 @@ def answer(
 
     system_prompt = build_system_prompt(
         cfg["name"], cfg["guide_name"], context_chunks, lang,
-        _directive_with_context(intent, scenic_id), group_type,
+        _directive_with_context(intent, scenic_id), group_type, situation=sit,
     )
     raw_reply = chat(system_prompt, history, query, fast=fast)
     reply, emotion = extract_emotion(raw_reply)
@@ -163,6 +201,7 @@ async def answer_stream(
     fast: bool = False,
     lang: str = "auto",
     group_type: str = "adult",
+    situation=None,
 ):
     """
     分句流式版本，yield 结构化事件 dict（供 SSE 下发给数字人驱动端）：
@@ -175,7 +214,8 @@ async def answer_stream(
     lang: "auto"（跟随提问语言）或语言代码（en/ja/ko…）强制指定回答语言。
     """
     history = history or []
-    cache_query = f"{group_type}::{lang}::{query}"  # 按 人格+语言 隔离缓存
+    sit = _situation_dict(situation)
+    cache_query = _cache_query(group_type, lang, _situation_key(sit), query)  # 人格+语言+情境隔离
     intent = classify(query, history)  # 先分派；无历史时纯规则匹配，0ms
     fast = fast or intent in _FAST_INTENTS  # 生成性意图自动提速（qwen-turbo）
     cacheable = not history and intent not in _CROWD_INTENTS  # 含实时客流的不缓存
@@ -211,7 +251,7 @@ async def answer_stream(
     directive = await asyncio.to_thread(_directive_with_context, intent, scenic_id)
     system_prompt = build_system_prompt(
         cfg["name"], cfg["guide_name"], context_chunks, lang,
-        directive, group_type,
+        directive, group_type, situation=sit,
     )
 
     yield _intent_event()  # intent 在 LLM 调用前即可下发，比 emotion 更早

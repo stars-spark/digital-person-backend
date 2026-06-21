@@ -62,6 +62,7 @@ Content-Type: application/json
 | `fast` | bool | | `true` 用 qwen-turbo（延迟减半，适合简单问答），默认 `false` |
 | `lang` | string | | 回答语言，`auto`（跟随提问语言）或 `en`/`ja`/`ko`… 强制指定，默认 `auto`，详见 1.4 节 |
 | `group_type` | string | | 同行关系，切换叙事人格，默认 `adult`，详见 1.5 节 |
+| `situation` | object\|null | | 游客自身情况标签（与 `group_type` 正交），按非默认值调讲解侧重，详见 1.6 节 |
 | `stream` | bool | | 必须为 `false`（或不填），流式用 1.2 节 |
 
 **景区 ID 枚举**
@@ -417,6 +418,36 @@ curl -X POST {BASE}/rag/chat \
 
 > **队友 B**：可在游客端开场用一次性选择（"和谁一起来？"）设置 `group_type`，后续请求带上即可。
 > `group_type` 与 `lang`、`fast`、`stream` 可任意组合。
+
+---
+
+### 1.6 自身情况标签 `situation`（🆕 2026-06-21）
+
+> 与 `group_type`（"和谁来"）**正交**的第二维度：游客**自身**怎样。开场多步向导收集，按**非默认值**调讲解侧重（无障碍只推无台阶路线、祈福重礼仪、半天给精华…）。`/chat`、`/chat`(stream)、`/recommend`、`/live/ask`、`/live/ask_stream` 均接受。
+
+**`situation` 对象字段**（全部可选，缺省=中性默认值）
+
+| 字段 | 取值（**默认**加粗） | 含义 |
+|---|---|---|
+| `age` | `teen` / **`youth`** / `middle` / `elder` | 年龄段 |
+| `pace` | `half` / **`day`** / `deep` | 游览节奏（半天精华 / 一整天 / 深度慢游） |
+| `mobility` | `stroller` / `wheelchair` / **`normal`** / `hiker` | 出行方式（婴儿车 / 无障碍 / 普通 / 徒步） |
+| `purpose` | `photo` / `kids_fun` / `pray` / **`relax`** / `study` | 此行目的 |
+| `first_time` | **`first`** / `return` | 是否初次到访 |
+
+**关键语义（back-compat 保证）**：`situation` 为 `null`、缺省、或**全为默认值**时，后端行为与不带该字段**逐字节一致**——系统 prompt 不变、问答缓存键不变 → **准确率零影响、缓存零失效**。只有**非默认值**才注入"因人而异"讲解指令并进入独立缓存键（不同情境不串答）。
+
+**请求示例**
+
+```bash
+# 需无障碍 + 祈福参拜
+curl -X POST {BASE}/rag/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"帮我安排今天怎么逛","scenic_id":"lingshan",
+       "situation":{"mobility":"wheelchair","purpose":"pray"}}'
+```
+
+> **前端**：游客端开场向导一次性收集 5 维，存 localStorage，之后每次 `/live/ask*`、`/recommend` 自动带上。可与 `group_type`、`lang`、`fast`、`stream` 任意组合。
 
 ---
 
@@ -790,12 +821,21 @@ GET /analytics/profile?scenic_id=lingshan&days=7
   "total_visitors": 36,
   "group_type": {"family_kids": 12, "couple": 9, "adult": 11, "senior": 4},
   "lang": {"zh": 30, "en": 4, "ja": 2},
-  "interests": {"history": 18, "nature": 12, "photo": 9, "food": 7, "culture": 6}
+  "interests": {"history": 18, "nature": 12, "photo": 9, "food": 7, "culture": 6},
+  "situation": {
+    "age": {"youth": 14, "elder": 6, "middle": 9, "teen": 3},
+    "pace": {"day": 20, "half": 8, "deep": 5},
+    "mobility": {"normal": 28, "stroller": 4, "wheelchair": 2, "hiker": 2},
+    "purpose": {"relax": 15, "photo": 8, "pray": 5, "kids_fun": 6, "study": 2},
+    "first_time": {"first": 26, "return": 7}
+  }
 }
 ```
 
 枚举：`group_type` ∈ adult/family_kids/senior/couple；`lang` ∈ zh/en/ja/ko；
 `interests` ∈ history/nature/photo/food/culture。
+`situation`（🆕 2026-06-21）= 自身情况标签 5 维分布（来自 `session_start` 事件 payload，取值见 1.6 节）；
+仅展示游客实际上报过的值，老会话无此数据则各维为空对象。
 
 ---
 
@@ -1264,6 +1304,7 @@ Content-Type: application/json
 | `sessionid` | string | LiveTalking 会话 ID，固定 `"0"` |
 | `screen` | string | `main`(手机端 16:9，默认) / `portrait`(大屏竖版 9:16) 🆕 |
 | `group_type` | string | `adult`/`family_kids`/`senior`/`couple`，默认 `adult` |
+| `situation` | object? | 自身情况标签（透传 RAG），字段见 1.6 节；缺省/全默认 = 行为不变 🆕 |
 | `lang` | string | `auto`/`zh`/`en`/… 默认 `auto` |
 | `voice_id` | string? | 精调音色（覆盖景区默认） |
 
@@ -1333,6 +1374,9 @@ POST /handoff/create
   "source_session_id": null,           // 可选：不便序列化 messages 时，给源会话 id 由服务端回读 conversations
   "poi": null,                         // 可选：深链接，接力后定位到某景点
   "source": "kiosk",                   // kiosk | phone
+  "situation": {                       // 🆕 可选：自身情况标签 5 维（手机→手机携带，字段见 1.6 节）；
+    "mobility": "wheelchair", "purpose": "pray"   //   仅带有值的维度平铺进快照、claim 时一并返回
+  },
   "ttl": 300                           // 秒，30~1800，默认 300
 }
 → 200 { "ok": true, "token": "zVMGib_nAIQ", "expires_in": 300, "claim_path": "/?h=zVMGib_nAIQ", "msg_count": 2 }

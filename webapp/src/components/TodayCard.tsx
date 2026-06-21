@@ -3,7 +3,7 @@ import { Sun, CloudRain, Cloud, Users, Lightbulb, HeartStraight } from '@phospho
 import * as api from '@/lib/api'
 import type { TodayResp } from '@/lib/api'
 import { careReminder } from '@/lib/personalize'
-import type { Lang } from '@/lib/i18n'
+import type { Lang, Situation } from '@/lib/i18n'
 
 function weatherIcon(w: string) {
   if (w.includes('雨')) return <CloudRain className="size-4 text-blue-500" weight="duotone" />
@@ -11,8 +11,8 @@ function weatherIcon(w: string) {
   return <Sun className="size-4 text-amber-500" weight="duotone" />
 }
 
-export default function TodayCard({ scenic, groupType, interests, lang, label }: {
-  scenic: string; groupType: string; interests: string[]; lang: Lang
+export default function TodayCard({ scenic, groupType, interests, lang, sit, label }: {
+  scenic: string; groupType: string; interests: string[]; lang: Lang; sit?: Partial<Situation>
   label: { today: string; tip: string }
 }) {
   const [d, setD] = useState<TodayResp | null>(null)
@@ -22,8 +22,8 @@ export default function TodayCard({ scenic, groupType, interests, lang, label }:
     return () => { alive = false }
   }, [scenic])
 
-  // 主动贴心提醒：画像 × 此刻时段（与天气 tip 互补，是"给你"的关怀，永远可显）
-  const care = careReminder(groupType, interests, lang)
+  // 主动贴心提醒：画像 × 自身情况 × 此刻时段（与天气 tip 互补，是"给你"的关怀，永远可显）
+  const care = careReminder(groupType, interests, lang, undefined, sit)
   if (!d || (!d.weather && !d.tip)) return null
   return (
     <div className="rounded-2xl border bg-gradient-to-br from-primary/[0.07] via-card to-sweet/[0.05] p-3.5">

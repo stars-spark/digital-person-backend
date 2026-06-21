@@ -80,6 +80,51 @@ def _build_persona_directive(group_type: str) -> str:
     return _PERSONA_DIRECTIVES.get(group_type, "")
 
 
+# 自身情况标签 → "因人而异"的讲解侧重（与 group_type 正交：group 管"和谁来"，这里管"游客自身怎样"）。
+# 仅**非默认值**注入；默认 youth/day/normal/relax/first 不产出任何文字，保证老画像/未选时
+# prompt 与缓存键与原状逐字节一致（零准确率影响）。每条≤一句，避免 prompt 膨胀。
+_SIT_DIRECTIVES: dict[str, dict[str, str]] = {
+    "age": {
+        "teen":   "同行是青少年，讲解可活泼有趣、结合潮流与打卡点，少些说教。",
+        "middle": "同行是中年游客，讲解稳重务实，兼顾文化深度与实用安排。",
+        "elder":  "同行有长者，语速从容、用词通俗，多关照休息与无障碍。",
+    },
+    "pace": {
+        "half": "游客只玩半天，请聚焦最精华的少数景点，给紧凑高效的精简安排，不贪多。",
+        "deep": "游客想深度慢游，可多讲背后的历史典故与细节、推荐小众安静的角落，不必赶。",
+    },
+    "mobility": {
+        "stroller":   "游客推婴儿车，优先平缓无台阶的路线，主动提示母婴室与洗手间。",
+        "wheelchair": "游客需无障碍，务必只推荐无台阶、有电梯或坡道的路线，并说明无障碍设施位置。",
+        "hiker":      "游客体力好、爱徒步，可推荐登高远眺与步道徒步等更有挑战的玩法。",
+    },
+    "purpose": {
+        "photo":    "游客此行重在拍照打卡，多推荐出片机位、光线时段与标志性取景。",
+        "kids_fun": "游客带孩子来玩，多用讲故事方式、推荐互动体验与孩子喜欢的项目。",
+        "pray":     "游客重在祈福参拜，介绍祈福流程、礼仪禁忌与寓意，语气庄重虔诚。",
+        "study":    "游客重在研学求知，讲解可更系统深入，多补历史背景与知识脉络。",
+    },
+    "first_time": {
+        "return": "游客是故地重游，不必再讲大众必看，多推荐容易被错过的小众看点与新体验。",
+    },
+}
+
+_SIT_DIMS = ("age", "pace", "mobility", "purpose", "first_time")
+
+
+def _build_situation_directive(situation: dict | None) -> str:
+    """自身情况标签 → 因人而异讲解指令。仅非默认值注入；全默认/None 返回空串。"""
+    if not situation:
+        return ""
+    lines = [
+        text for dim in _SIT_DIMS
+        if (text := _SIT_DIRECTIVES.get(dim, {}).get(situation.get(dim)))
+    ]
+    if not lines:
+        return ""
+    return "\n【因人而异·按游客自身情况】" + "".join(lines) + "\n"
+
+
 def _build_lang_directive(lang: str) -> str:
     """生成回答语言指令。情绪标签始终保持中文固定格式，仅正文切换语言。"""
     if lang == "auto":
@@ -130,13 +175,16 @@ def build_system_prompt(
     lang: str = "auto",
     task_directive: str = "",
     group_type: str = "adult",
+    situation: dict | None = None,
 ) -> str:
     context = "\n\n---\n\n".join(context_chunks) if context_chunks else "（暂无相关资料）"
+    # 同行人格 + 自身情况指令拼在同一占位（situation 全默认/None 时为空，不影响原 prompt）
+    persona = _build_persona_directive(group_type) + _build_situation_directive(situation)
     return SYSTEM_PROMPT_TEMPLATE.format(
         scenic_name=scenic_name,
         guide_name=guide_name,
         context=context,
-        persona_directive=_build_persona_directive(group_type),
+        persona_directive=persona,
         task_directive=task_directive,
         lang_directive=_build_lang_directive(lang),
     )

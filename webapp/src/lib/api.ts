@@ -1,14 +1,24 @@
 // 与桥接(:9000)同源的端点封装。契约对照 talk_mobile.html（即行为规格）。
 // 全部相对路径：dev 经 vite proxy、生产经桥接反代，单源无 mixed-content。
+import type { Situation } from '@/lib/i18n'
 
 export const SESSION_ID = '0' // RTMP 单路固定 sessionid
+
+// 自身情况标签：仅非默认值才有意义注入后端（全默认 = 不传 → 后端缓存键与 prompt 与现状一致）。
+// undefined 时不进 body，避免给存量链路引入 situation 字段。
+type Sit = Partial<Situation> | undefined
 
 export interface GreetResp { text?: string; emotion?: string }
 export interface AskResp { reply?: string; intent?: string; emotion?: string; detail?: string; mode?: string; degraded?: boolean; clip_url?: string; cached?: boolean }
 export interface ImageResp { reply?: string; location?: string; emotion?: string; detail?: string }
 
-export async function greeting(scenic: string, groupType = 'adult'): Promise<GreetResp> {
-  const r = await fetch(`/rag/trip/greeting?scenic_id=${scenic}&group_type=${groupType}`)
+export async function greeting(scenic: string, groupType = 'adult', sit?: Sit): Promise<GreetResp> {
+  const q = new URLSearchParams({ scenic_id: scenic, group_type: groupType })
+  // 仅非默认情境维度入参（迎宾口吻按年龄/目的/初访微调；缺省=原迎宾词）
+  if (sit?.age) q.set('age', sit.age)
+  if (sit?.purpose) q.set('purpose', sit.purpose)
+  if (sit?.first_time) q.set('first_time', sit.first_time)
+  const r = await fetch(`/rag/trip/greeting?${q.toString()}`)
   return r.json()
 }
 
@@ -130,7 +140,7 @@ export function liveSay(text: string, scenic: string, emotion = 'happy', voiceId
 }
 
 export async function liveAsk(
-  message: string, scenic: string, groupType = 'adult', lang = 'auto', voiceId?: string,
+  message: string, scenic: string, groupType = 'adult', lang = 'auto', voiceId?: string, situation?: Sit,
 ): Promise<{ ok: boolean; data: AskResp }> {
   const r = await fetch('/live/ask', {
     method: 'POST',
@@ -138,6 +148,7 @@ export async function liveAsk(
     body: JSON.stringify({
       sessionid: SESSION_ID, message, scenic_id: scenic, group_type: groupType, lang,
       ...(voiceId ? { voice_id: voiceId } : {}),
+      ...(situation ? { situation } : {}),
     }),
   })
   return { ok: r.ok, data: await r.json() }
@@ -152,7 +163,7 @@ export interface AskStreamHandlers {
 }
 export async function liveAskStream(
   message: string, scenic: string, groupType = 'adult', lang = 'auto', voiceId: string | undefined,
-  h: AskStreamHandlers, signal?: AbortSignal,
+  h: AskStreamHandlers, signal?: AbortSignal, situation?: Sit,
 ): Promise<{ ok: boolean; data: AskResp }> {
   const r = await fetch('/live/ask_stream', {
     method: 'POST',
@@ -160,6 +171,7 @@ export async function liveAskStream(
     body: JSON.stringify({
       sessionid: SESSION_ID, message, scenic_id: scenic, group_type: groupType, lang,
       ...(voiceId ? { voice_id: voiceId } : {}),
+      ...(situation ? { situation } : {}),
     }),
     signal,
   })
@@ -278,13 +290,16 @@ export interface RecoCard {
   query?: string | null
 }
 export async function recommend(body: {
-  scenic: string; groupType: string; interests: string[]; lang?: string
+  scenic: string; groupType: string; interests: string[]; lang?: string; situation?: Sit
 }): Promise<{ cards: RecoCard[]; basis: string[] }> {
   try {
     const r = await fetch('/rag/recommend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scenic_id: body.scenic, group_type: body.groupType, interests: body.interests, lang: body.lang || 'zh' }),
+      body: JSON.stringify({
+        scenic_id: body.scenic, group_type: body.groupType, interests: body.interests, lang: body.lang || 'zh',
+        ...(body.situation ? { situation: body.situation } : {}),
+      }),
     })
     if (!r.ok) return { cards: [], basis: [] }
     return await r.json()
@@ -298,11 +313,13 @@ export interface HandoffMsg { role: 'user' | 'assistant'; text: string; emotion?
 export interface HandoffSnapshot {
   scenic_id: string; group_type: string; lang: string; interests: string[]
   avatar_id?: string | null; voice_id?: string | null
+  // 自身情况标签（Phase C 起随快照带走；老快照无此字段 → 注水时跳过）
+  age?: string | null; pace?: string | null; mobility?: string | null; purpose?: string | null; first_time?: string | null
   messages: HandoffMsg[]; trace?: unknown; poi?: string | null; source?: string
 }
 export async function createHandoff(body: {
   scenic: string; groupType: string; lang: string; interests: string[]
-  voiceId?: string; avatarPref?: string; messages: HandoffMsg[]; trace?: unknown; source?: string
+  voiceId?: string; avatarPref?: string; messages: HandoffMsg[]; trace?: unknown; source?: string; situation?: Sit
 }): Promise<{ ok: boolean; token?: string; expiresIn?: number; msgCount?: number }> {
   try {
     const r = await fetch('/rag/handoff/create', {
@@ -312,6 +329,7 @@ export async function createHandoff(body: {
         scenic_id: body.scenic, group_type: body.groupType, lang: body.lang, interests: body.interests,
         voice_id: body.voiceId || null, avatar_id: body.avatarPref || null,
         messages: body.messages, trace: body.trace ?? null, source: body.source || 'phone',
+        ...(body.situation ? { situation: body.situation } : {}),
       }),
     })
     const d = await r.json().catch(() => ({}))

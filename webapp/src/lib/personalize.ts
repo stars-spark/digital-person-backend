@@ -1,6 +1,6 @@
 // 画像驱动的轻量个性化（纯前端，0 后端依赖）：同一份「同行人×兴趣」既喂「为你定制」推荐卡，
 // 也用来挑「快问 chips」、排「设施速查」、置顶「跟我游路线」——让游客在每个角落都感到"它懂我"。
-import type { Lang } from '@/lib/i18n'
+import type { Lang, Situation } from '@/lib/i18n'
 
 type L = Record<Lang, string>
 interface Chip { id: string; label: L; q: string; group?: string; interests?: string[]; base?: boolean }
@@ -34,13 +34,28 @@ const POOL: Chip[] = [
   { id: 'zen', label: { zh: '禅意体验', en: 'Zen', ja: '禅体験', ko: '선 체험' }, q: '有哪些禅意静心的体验？', interests: ['culture'] },
 ]
 
-// 挑 5 个快问 chip：推荐路线恒在 → 同行人 chip（最多 2，身份最定调）→ 命中兴趣 chip → 通用兜底。
-export function quickAsks(group: string, interests: string[], lang: Lang): { id: string; label: string; q: string }[] {
+// 挑 5 个快问 chip：推荐路线恒在 → 情境强信号（目的/出行/初访/节奏，让"选完主屏立刻变样"）→
+// 同行人 chip（最多 2，身份最定调）→ 命中兴趣 chip → 通用兜底。sit 缺省（老画像/全默认）≈ 原行为。
+export function quickAsks(group: string, interests: string[], lang: Lang, sit?: Partial<Situation>): { id: string; label: string; q: string }[] {
   const picked: Chip[] = []
   const add = (c?: Chip) => { if (c && !picked.some((x) => x.id === c.id)) picked.push(c) }
   const byId = (id: string) => POOL.find((c) => c.id === id)
 
   add(byId('route'))                                          // 招牌入口，恒在
+  // 情境强信号优先：自身情况标签直接拉对味快问（非装饰 = 选完看得见）
+  if (sit) {
+    if (sit.purpose === 'photo') add(byId('photo_spot'))
+    else if (sit.purpose === 'pray') add(byId('pray'))
+    else if (sit.purpose === 'kids_fun') add(byId('kids_play'))
+    else if (sit.purpose === 'study') add(byId('lore'))
+    if (sit.mobility === 'wheelchair') add(byId('accessible'))
+    else if (sit.mobility === 'stroller') add(byId('baby_room'))
+    else if (sit.mobility === 'hiker') add(byId('viewpoint'))
+    if (sit.first_time === 'return') add(byId('lore'))        // 回头客 → 深度典故
+    else add(byId('howto'))                                   // 初来 → 怎么逛
+    if (sit.pace === 'half') add(byId('mustsee'))             // 半天 → 直奔必看
+    else if (sit.pace === 'deep') add(byId('story'))          // 深度 → 听故事
+  }
   POOL.filter((c) => c.group === group).slice(0, 2).forEach(add)
   POOL.filter((c) => c.interests?.some((i) => interests.includes(i)))
     .map((c) => ({ c, n: c.interests!.filter((i) => interests.includes(i)).length }))
@@ -57,14 +72,24 @@ const FACILITY_ORDER: Record<string, string[]> = {
   couple: ['food', 'rest', 'toilet', 'medical', 'baby', 'access'],
   adult: ['toilet', 'food', 'rest', 'medical', 'baby', 'access'],
 }
-export function facilityRank(group: string): (id: string) => number {
-  const order = FACILITY_ORDER[group] || FACILITY_ORDER.adult
+export function facilityRank(group: string, sit?: Partial<Situation>): (id: string) => number {
+  // 出行方式强信号优先：轮椅→无障碍/卫生间置顶，婴儿车→母婴/卫生间置顶（比同行人更精准）
+  let order: string[]
+  if (sit?.mobility === 'wheelchair') order = ['access', 'toilet', 'rest', 'medical', 'food', 'baby']
+  else if (sit?.mobility === 'stroller') order = ['baby', 'toilet', 'rest', 'food', 'access', 'medical']
+  else order = FACILITY_ORDER[group] || FACILITY_ORDER.adult
   return (id: string) => { const i = order.indexOf(id); return i < 0 ? 99 : i }
 }
 
 // ── 主动贴心提醒：画像 × 此刻时段 → 一句关怀（导游"随机应变 + 关怀"轴，非"去哪看什么"）──
 // 同行人画像最定调（长辈/亲子/情侣各有牵挂），独自出游按时段给体感建议。0 后端、客户端取时。
-export function careReminder(group: string, _interests: string[], lang: Lang, hour = new Date().getHours()): string {
+export function careReminder(group: string, _interests: string[], lang: Lang, hour = new Date().getHours(), sit?: Partial<Situation>): string {
+  // 自身情况强信号优先（出行方式 > 目的 > 同行人 > 时段）：选了无障碍/徒步/祈福等立刻给对味关怀
+  if (sit?.mobility === 'wheelchair') { const m: L = { zh: '沿途已为你留意无障碍通道与电梯，遇到台阶随时叫我帮你绕行', en: 'I’ve noted step-free paths & elevators along the way — hit a stair, just ask me to reroute', ja: 'バリアフリー通路とエレベーターを確認済み。段差があれば迂回案内します', ko: '무장애 통로와 엘리베이터를 챙겨뒀어요 — 계단이 있으면 우회 안내할게요' }; return m[lang] ?? m.zh }
+  if (sit?.mobility === 'stroller') { const m: L = { zh: '推车出行我帮你避开台阶多的路段，母婴室、卫生间随时问我', en: 'With a stroller I’ll steer you clear of stairs — ask me for baby rooms & restrooms anytime', ja: 'ベビーカーは段差を避けて案内。授乳室・トイレもいつでも聞いてね', ko: '유모차는 계단 적은 길로 안내할게요 — 수유실·화장실 언제든 물어보세요' }; return m[lang] ?? m.zh }
+  if (sit?.mobility === 'hiker') { const m: L = { zh: '爱徒步就好好走，留意补水与体力，登高路段建议错开正午日头', en: 'Hiker mode — pace your water & energy, and skip the noon sun on the climbs', ja: '健脚モード。水分と体力に気をつけ、登りは正午の日差しを避けて', ko: '등산 모드 — 수분·체력 챙기고, 오르막은 한낮 햇볕을 피하세요' }; return m[lang] ?? m.zh }
+  if (sit?.purpose === 'pray') { const m: L = { zh: '想祈福参拜的话，我可以带你按礼仪顺序走一遍，殿内记得轻声', en: 'For praying, I can walk you through the proper order — keep voices low in the halls', ja: '参拝なら作法の順に案内します。お堂では声を控えめに', ko: '참배라면 예법 순서대로 안내할게요 — 법당 안에선 조용히' }; return m[lang] ?? m.zh }
+  if (sit?.pace === 'deep') { const m: L = { zh: '不赶时间，慢慢逛，想深入了解哪一处随时喊我细讲', en: 'No rush — take it slow, and call me to go deep on anything that catches you', ja: '焦らずゆっくり。気になる所は遠慮なく深掘りを頼んでね', ko: '서두르지 말고 천천히 — 끌리는 곳은 깊이 설명해 드릴게요' }; return m[lang] ?? m.zh }
   const G: Record<string, L> = {
     senior: { zh: '陪长辈慢慢走，沿途备了休息区与无障碍通道，累了随时招呼我', en: 'Take it slow with elders — rest areas & step-free paths are along the way; just ask me', ja: '年長者とゆっくり。休憩所・バリアフリー通路もあるので、疲れたら声をかけてね', ko: '어르신과 천천히 — 휴식 공간과 무장애 길이 있어요. 힘들면 불러 주세요' },
     family_kids: { zh: '带娃记得补水防晒，热门表演有固定场次，问我时刻表别扑空', en: 'Keep kids hydrated & sun-safe; popular shows have set times — ask me so you don’t miss them', ja: '子供の水分・日焼け対策を。人気ショーは時間が決まっているので時刻を聞いてね', ko: '아이 수분·자외선 챙기세요. 인기 공연은 시간이 정해져 있어요 — 시간표 물어보세요' },
@@ -103,7 +128,16 @@ export function tripBlessing(visited: string[], group: string, guideName: string
 }
 
 // 「为你优先排序」的一句话说明（设施抽屉用），无个性化（adult）则不显。
-export function facilityHint(group: string, lang: Lang): string | null {
+export function facilityHint(group: string, lang: Lang, sit?: Partial<Situation>): string | null {
+  // 出行方式强信号优先（与 facilityRank 对齐）
+  if (sit?.mobility === 'wheelchair') {
+    const m: L = { zh: '已把无障碍通道、卫生间排在前', en: 'Step-free access & restrooms first', ja: 'バリアフリー通路・トイレを優先', ko: '무장애 통로·화장실 우선' }
+    return m[lang] ?? m.zh
+  }
+  if (sit?.mobility === 'stroller') {
+    const m: L = { zh: '已为推车出行把母婴室、卫生间排在前', en: 'Baby room & restrooms first for strollers', ja: 'ベビーカー向けに授乳室・トイレを優先', ko: '유모차를 위해 수유실·화장실 우선' }
+    return m[lang] ?? m.zh
+  }
   const M: Record<string, L> = {
     family_kids: { zh: '已为亲子出行把母婴室、卫生间排在前', en: 'Baby room & restrooms first for families', ja: '親子向けに授乳室・トイレを優先', ko: '가족을 위해 수유실·화장실 우선' },
     senior: { zh: '已为长辈把休息区、医务室排在前', en: 'Rest areas & first aid first for seniors', ja: '年長者向けに休憩所・医務室を優先', ko: '어르신을 위해 휴식 공간·의무실 우선' },

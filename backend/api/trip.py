@@ -26,6 +26,21 @@ _GREET_PERSONA = {
     "couple": "语气温馨，提一句适合两人留下美好回忆。",
 }
 
+# 自身情况标签 → 迎宾口吻微调（仅非默认值注入；默认 youth/relax/first 不改开场白）
+_GREET_AGE = {
+    "teen":  "语气可年轻有活力一点。",
+    "elder": "语气格外温和放慢、多一分敬重。",
+}
+_GREET_PURPOSE = {
+    "photo":    "可顺带说一句这里很出片、随时帮你拍照定位。",
+    "kids_fun": "可提一句这里有不少适合孩子的好玩处。",
+    "pray":     "语气可庄重温和些，提一句可带你祈福参拜。",
+    "study":    "可提一句乐意陪你深入聊聊背后的历史文化。",
+}
+_GREET_FIRST = {
+    "return": "对方是故地重游，开场可说一句『欢迎再来』，并提一句带你逛点容易错过的新看点。",
+}
+
 
 class GreetingResponse(BaseModel):
     text: str
@@ -69,13 +84,25 @@ def trip_today(scenic_id: str = "lingshan"):
 
 
 @router.get("/greeting", response_model=GreetingResponse)
-def greeting(scenic_id: str = "lingshan", group_type: str = "adult"):
+def greeting(
+    scenic_id: str = "lingshan",
+    group_type: str = "adult",
+    age: str = "youth",
+    purpose: str = "relax",
+    first_time: str = "first",
+):
     """主动迎宾：游客一打开/连接，数字人微笑打招呼+自我介绍+邀请开始游览。
 
     开场画面（用户最初的愿景）。供前端连接成功后自动驱动数字人开口。
+    age/purpose/first_time 为自身情况标签，按非默认值微调迎宾口吻（默认值 = 原行为）。
     """
     cfg = get_scenic_config(scenic_id)
-    persona = _GREET_PERSONA.get(group_type, "")
+    persona = (
+        _GREET_PERSONA.get(group_type, "")
+        + _GREET_AGE.get(age, "")
+        + _GREET_PURPOSE.get(purpose, "")
+        + _GREET_FIRST.get(first_time, "")
+    )
     prompt = (
         f"你是{cfg['name']}的专属智能AI导览数字人（你没有人名，不要给自己起名、不要自称任何人名）。"
         f"一位游客刚打开导览页面，请你热情微笑着说一段开场白：先明确自我介绍一句"

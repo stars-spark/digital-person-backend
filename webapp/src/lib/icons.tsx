@@ -8,6 +8,8 @@ import {
   Ticket, Compass, ChatCircleDots, GraduationCap, Trophy,
   Toilet, Armchair, FirstAid, Wheelchair,
   Smiley, SmileyWink, SmileyMeh, Binoculars, HeartStraight, HandsPraying,
+  Student, Person, Hourglass, Path, BabyCarriage, PersonSimpleHike,
+  Confetti, Coffee, Flag, ArrowsClockwise, Sun,
 } from '@phosphor-icons/react'
 
 // 同行人（id 对应 i18n GROUPS）
@@ -45,6 +47,23 @@ export const FACILITY_ICONS: Record<string, Icon> = {
   medical: FirstAid,
   baby: Baby,
   access: Wheelchair,
+}
+
+// 自身情况标签（id 对应 i18n AGES/PACES/MOBILITIES/PURPOSES/FIRSTTIMES）
+export const AGE_ICONS: Record<string, Icon> = {
+  teen: Student, youth: PersonSimpleWalk, middle: Person, elder: PersonSimpleTaiChi,
+}
+export const PACE_ICONS: Record<string, Icon> = {
+  half: Hourglass, day: Sun, deep: Path,
+}
+export const MOBILITY_ICONS: Record<string, Icon> = {
+  stroller: BabyCarriage, wheelchair: Wheelchair, normal: PersonSimpleWalk, hiker: PersonSimpleHike,
+}
+export const PURPOSE_ICONS: Record<string, Icon> = {
+  photo: Camera, kids_fun: Confetti, pray: HandsPraying, relax: Coffee, study: GraduationCap,
+}
+export const FIRSTTIME_ICONS: Record<string, Icon> = {
+  first: Flag, return: ArrowsClockwise,
 }
 
 // 数字人情绪 → 图标 + 中文标签（对应 RAG [情绪:X]）

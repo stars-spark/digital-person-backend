@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import * as api from '@/lib/api'
 import type { Lang } from '@/lib/i18n'
-import { GROUPS, INTERESTS, LANGS } from '@/lib/i18n'
+import { GROUPS, INTERESTS, LANGS, AGES, PACES, MOBILITIES, PURPOSES, FIRSTTIMES, SIT_DEFAULTS } from '@/lib/i18n'
 import * as trace from '@/lib/trace'
 import type { Trace } from '@/lib/trace'
 import { track as trackEvent } from '@/lib/track'
@@ -55,10 +55,21 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
   const [groupType, setGroupType] = useState(() => loadPref('lingjing.group', GROUPS.map((g) => g.id), 'adult'))
   const [interests, setInterests] = useState<string[]>(loadInterests)
   const [lang, setLang] = useState<Lang>(() => loadPref('lingjing.lang', LANGS.map((l) => l.id), 'zh') as Lang)
+  // 自身情况标签（多步 onboarding 新增 5 维）：默认值=中性，老画像缺键回落默认 → 行为零变化
+  const [age, setAge] = useState(() => loadPref('lingjing.age', AGES.map((a) => a.id), SIT_DEFAULTS.age))
+  const [pace, setPace] = useState(() => loadPref('lingjing.pace', PACES.map((p) => p.id), SIT_DEFAULTS.pace))
+  const [mobility, setMobility] = useState(() => loadPref('lingjing.mobility', MOBILITIES.map((m) => m.id), SIT_DEFAULTS.mobility))
+  const [purpose, setPurpose] = useState(() => loadPref('lingjing.purpose', PURPOSES.map((p) => p.id), SIT_DEFAULTS.purpose))
+  const [firstTime, setFirstTime] = useState(() => loadPref('lingjing.firsttime', FIRSTTIMES.map((f) => f.id), SIT_DEFAULTS.first_time))
   useEffect(() => { savePref('lingjing.scenic', scenic) }, [scenic])
   useEffect(() => { savePref('lingjing.group', groupType) }, [groupType])
   useEffect(() => { savePref('lingjing.interests', JSON.stringify(interests)) }, [interests])
   useEffect(() => { savePref('lingjing.lang', lang) }, [lang])
+  useEffect(() => { savePref('lingjing.age', age) }, [age])
+  useEffect(() => { savePref('lingjing.pace', pace) }, [pace])
+  useEffect(() => { savePref('lingjing.mobility', mobility) }, [mobility])
+  useEffect(() => { savePref('lingjing.purpose', purpose) }, [purpose])
+  useEffect(() => { savePref('lingjing.firsttime', firstTime) }, [firstTime])
   const [status, setStatus] = useState<Status>('idle')
   const [thinking, setThinking] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -105,7 +116,19 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
   useEffect(() => { langRef.current = lang }, [lang])
   const interestsRef = useRef(interests)
   useEffect(() => { interestsRef.current = interests }, [interests])
+  // 自身情况标签 refs（供 ask/recommend 等稳定回调读最新值，Phase B 透传给后端）
+  const ageRef = useRef(age); useEffect(() => { ageRef.current = age }, [age])
+  const paceRef = useRef(pace); useEffect(() => { paceRef.current = pace }, [pace])
+  const mobilityRef = useRef(mobility); useEffect(() => { mobilityRef.current = mobility }, [mobility])
+  const purposeRef = useRef(purpose); useEffect(() => { purposeRef.current = purpose }, [purpose])
+  const firstTimeRef = useRef(firstTime); useEffect(() => { firstTimeRef.current = firstTime }, [firstTime])
   const backendLang = () => (LANGS.find((l) => l.id === langRef.current)?.backend || 'auto')
+  // 组装自身情况快照（读 ref 取最新）：发给后端调讲解侧重 + 推荐。全默认时后端按"空"处理，
+  // 缓存键/prompt 与现状逐字节一致（零准确率影响），故可无条件发送。
+  const sitPayload = () => ({
+    age: ageRef.current, pace: paceRef.current, mobility: mobilityRef.current,
+    purpose: purposeRef.current, first_time: firstTimeRef.current,
+  })
 
   // ── 个性化推荐「为你定制」：画像×兴趣×此刻 → 推荐卡（loadRecos 稳定，读 ref 取最新画像）──
   const [recos, setRecos] = useState<api.RecoCard[]>([])
@@ -116,7 +139,7 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
     const seq = ++recoSeqRef.current
     setRecosLoading(true)
     try {
-      const r = await api.recommend({ scenic: scenicRef.current, groupType: groupRef.current, interests: interestsRef.current, lang: backendLang() })
+      const r = await api.recommend({ scenic: scenicRef.current, groupType: groupRef.current, interests: interestsRef.current, lang: backendLang(), situation: sitPayload() })
       if (seq !== recoSeqRef.current) return       // 被更新的画像取代 → 丢弃旧结果
       setRecos(r.cards); setRecoBasis(r.basis)
     } catch { if (seq === recoSeqRef.current) setRecos([]) }
@@ -161,7 +184,7 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
     setThinking(true)
     const aid = pushMsg({ role: 'assistant', text: '', thinking: true })
     try {
-      const g = await api.greeting(scenicRef.current, groupRef.current)
+      const g = await api.greeting(scenicRef.current, groupRef.current, sitPayload())
       if (g.text) {
         const m: Meta = { greet: true }
         setReply(g.text); setThinking(false); setMeta(m)
@@ -396,6 +419,7 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
           onOpen: (d) => { driveOn = d },
           onSentence: (text) => { if (seq === askSeqRef.current) { full += text; start() } },
         },
+        undefined, sitPayload(),
       )
       if (seq !== askSeqRef.current) { stop(); setMessages((prev) => prev.filter((m) => m.id !== aid)); return }  // 被新问取代 → 撤气泡
       if (!ok) {
@@ -536,6 +560,12 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
     if (snap.lang) setLang(snap.lang as Lang)
     if (snap.voice_id) setVoiceId(snap.voice_id)
     if (snap.avatar_id) setAvatarPref(snap.avatar_id)
+    // 自身情况标签（Phase C 起随快照带走；老快照无此字段 → 跳过保留本机默认）
+    if (snap.age) setAge(snap.age)
+    if (snap.pace) setPace(snap.pace)
+    if (snap.mobility) setMobility(snap.mobility)
+    if (snap.purpose) setPurpose(snap.purpose)
+    if (snap.first_time) setFirstTime(snap.first_time)
     const imported: Msg[] = (snap.messages || [])
       .filter((m) => (m.text || '').trim())
       .map((m) => ({
@@ -556,6 +586,7 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
 
   return {
     scenic, setScenic, groupType, setGroupType, interests, setInterests, lang, setLang, guideName,
+    age, setAge, pace, setPace, mobility, setMobility, purpose, setPurpose, firstTime, setFirstTime,
     voiceId, setVoiceId, avatarPref, setAvatarPref,
     status, setStatus, thinking, busy, reply, meta, messages, mic,
     trace: traceState, recordVisit, recordRouteDone, recordRating, track,

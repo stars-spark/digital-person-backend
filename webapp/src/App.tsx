@@ -70,7 +70,7 @@ export default function App() {
   useEffect(() => {
     if (onboarded) g.loadRecos()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onboarded, g.scenic, g.groupType, g.interests])
+  }, [onboarded, g.scenic, g.groupType, g.interests, g.age, g.pace, g.mobility, g.purpose, g.firstTime])
   // 推荐卡曝光埋点（两端共用：管理端大屏「推荐效果」据此聚合）
   useEffect(() => {
     if (g.recos.length > 0) g.track('reco_impression', { count: g.recos.length })
@@ -85,8 +85,13 @@ export default function App() {
   }
   const connected = g.status === 'connected'
   const t = makeT(g.lang)
-  // 快问 chips 按画像挑选（同行人×兴趣）：亲子看「带孩子玩什么」、长辈看「哪里能歇脚」、拍照看「拍照机位」
-  const suggestions = useMemo(() => quickAsks(g.groupType, g.interests, g.lang), [g.groupType, g.interests, g.lang])
+  // 自身情况标签（5 维）打成 sit 对象 → 喂客户端即时杠杆（快问/设施/关怀），选完主屏立刻变样
+  const sit = useMemo(
+    () => ({ age: g.age, pace: g.pace, mobility: g.mobility, purpose: g.purpose, first_time: g.firstTime }),
+    [g.age, g.pace, g.mobility, g.purpose, g.firstTime],
+  )
+  // 快问 chips 按画像挑选（同行人×兴趣×自身情况）：目的=拍照看「拍照机位」、出行=轮椅看「无障碍」、回头客看「典故」
+  const suggestions = useMemo(() => quickAsks(g.groupType, g.interests, g.lang, sit), [g.groupType, g.interests, g.lang, sit])
   // 舞台成片(含手势欢迎片 / L1 缓存片)→ 实时流的交叉淡出：clip 结束不硬切，~480ms 淡出露出底下实时流，
   // 把"有手→无手 / 半身→胸像 / 取景跳变"读成一次有意的过渡（手势欢迎片切实时问答的接缝平滑器）
   const [clipEnding, setClipEnding] = useState(false)
@@ -109,7 +114,10 @@ export default function App() {
   const enterApp = () => {
     setOnboarded(true)
     try { localStorage.setItem('lingjing.onboarded', '1') } catch { /* ignore */ }
-    g.track('session_start', { interests: g.interests, device: g.isIOS ? 'ios' : 'web' })
+    g.track('session_start', {
+      interests: g.interests, device: g.isIOS ? 'ios' : 'web',
+      age: g.age, pace: g.pace, mobility: g.mobility, purpose: g.purpose, first_time: g.firstTime,
+    })
   }
   // 重看开场（设置入口；保留已选偏好，重看时呈现记忆值）
   const replayOnboarding = () => {
@@ -203,6 +211,11 @@ export default function App() {
         scenic={g.scenic} setScenic={g.setScenic}
         groupType={g.groupType} setGroupType={g.setGroupType}
         interests={g.interests} setInterests={g.setInterests}
+        age={g.age} setAge={g.setAge}
+        pace={g.pace} setPace={g.setPace}
+        mobility={g.mobility} setMobility={g.setMobility}
+        purpose={g.purpose} setPurpose={g.setPurpose}
+        firstTime={g.firstTime} setFirstTime={g.setFirstTime}
         guideName={g.guideName} avatarPref={g.avatarPref}
         onEnter={enterApp}
       />
@@ -327,7 +340,7 @@ export default function App() {
         </div>
 
         {/* 今日游园建议卡 */}
-        <TodayCard scenic={g.scenic} groupType={g.groupType} interests={g.interests} lang={g.lang} label={{ today: t('today'), tip: t('today_tip') }} />
+        <TodayCard scenic={g.scenic} groupType={g.groupType} interests={g.interests} lang={g.lang} sit={sit} label={{ today: t('today'), tip: t('today_tip') }} />
 
         {/* 为你定制（个性化推荐区） */}
         <ForYouSection cards={g.recos} basis={g.recoBasis} loading={g.recosLoading} onCard={handleReco}
@@ -406,7 +419,7 @@ export default function App() {
         onAsk={askStationVia('tour')}
         onRouteDone={(id) => { g.track('milestone', { kind: 'route', id }); g.recordRouteDone(id) }}
       />
-      <FacilitySheet open={facOpen} onOpenChange={setFacOpen} scenic={g.scenic} groupType={g.groupType} lang={g.lang} onAsk={(q) => g.ask(q)} />
+      <FacilitySheet open={facOpen} onOpenChange={setFacOpen} scenic={g.scenic} groupType={g.groupType} lang={g.lang} sit={sit} onAsk={(q) => g.ask(q)} />
       <GpsSheet open={gpsOpen} onOpenChange={setGpsOpen} scenic={g.scenic} onAsk={askStationVia('gps')} />
       <TraceSheet
         open={traceOpen} onOpenChange={setTraceOpen} trace={g.trace}
@@ -420,11 +433,16 @@ export default function App() {
         open={profileOpen} onOpenChange={setProfileOpen} lang={g.lang}
         groupType={g.groupType} setGroupType={g.setGroupType}
         interests={g.interests} setInterests={g.setInterests}
+        age={g.age} setAge={g.setAge}
+        pace={g.pace} setPace={g.setPace}
+        mobility={g.mobility} setMobility={g.setMobility}
+        purpose={g.purpose} setPurpose={g.setPurpose}
+        firstTime={g.firstTime} setFirstTime={g.setFirstTime}
       />
       <ShareSheet
         open={shareOpen} onOpenChange={setShareOpen}
         scenic={g.scenic} scenicName={scenicName} groupType={g.groupType} lang={g.lang}
-        interests={g.interests} voiceId={g.voiceId} avatarPref={g.avatarPref} messages={g.messages}
+        interests={g.interests} voiceId={g.voiceId} avatarPref={g.avatarPref} situation={sit} messages={g.messages}
       />
     </div>
   )

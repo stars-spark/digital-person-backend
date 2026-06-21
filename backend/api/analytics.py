@@ -464,13 +464,20 @@ def profile(scenic_id: str = "lingshan", days: int = 7):
             (scenic_id, since),
         ).fetchall()
     groups, langs, interests = Counter(), Counter(), Counter()
+    # 自身情况标签 5 维分布（来自 session_start payload，零 DB 迁移）
+    sit_counters = {d: Counter() for d in ("age", "pace", "mobility", "purpose", "first_time")}
     for r in rows:
         if r["group_type"]:
             groups[r["group_type"]] += 1
         if r["lang"]:
             langs[r["lang"]] += 1
-        for it in (_payload(r).get("interests") or []):
+        p = _payload(r)
+        for it in (p.get("interests") or []):
             interests[it] += 1
+        for dim, ctr in sit_counters.items():
+            v = p.get(dim)
+            if v:
+                ctr[v] += 1
     return {
         "scenic_id": scenic_id,
         "period_days": days,
@@ -478,6 +485,7 @@ def profile(scenic_id: str = "lingshan", days: int = 7):
         "group_type": dict(groups),
         "lang": dict(langs),
         "interests": dict(interests.most_common(10)),
+        "situation": {d: dict(ctr) for d, ctr in sit_counters.items()},
     }
 
 

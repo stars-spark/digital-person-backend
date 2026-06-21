@@ -3,28 +3,28 @@ import { NavigationArrow, Lifebuoy, MapPin, Sparkle } from '@phosphor-icons/reac
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { FACILITY_ICONS } from '@/lib/icons'
 import { facilityRank, facilityHint } from '@/lib/personalize'
-import type { Lang } from '@/lib/i18n'
+import type { Lang, Situation } from '@/lib/i18n'
 import * as api from '@/lib/api'
 import type { FacilityGroup } from '@/lib/api'
 
 interface Props {
   open: boolean; onOpenChange: (o: boolean) => void
-  scenic: string; groupType: string; lang: Lang
+  scenic: string; groupType: string; lang: Lang; sit?: Partial<Situation>
   onAsk: (q: string) => void
 }
 
-export default function FacilitySheet({ open, onOpenChange, scenic, groupType, lang, onAsk }: Props) {
+export default function FacilitySheet({ open, onOpenChange, scenic, groupType, lang, sit, onAsk }: Props) {
   const [groups, setGroups] = useState<FacilityGroup[]>([])
   useEffect(() => {
     if (!open) return
     api.facilities(scenic).then(setGroups).catch(() => setGroups([]))
   }, [open, scenic])
-  // 按画像把最相关的设施类别提前（亲子→母婴/卫生间，长辈→休息/医务/无障碍）
+  // 按画像 + 自身情况把最相关的设施类别提前（轮椅→无障碍置顶，婴儿车→母婴，长辈→休息/医务）
   const ordered = useMemo(() => {
-    const rank = facilityRank(groupType)
+    const rank = facilityRank(groupType, sit)
     return [...groups].sort((a, b) => rank(a.id) - rank(b.id))
-  }, [groups, groupType])
-  const hint = facilityHint(groupType, lang)
+  }, [groups, groupType, sit])
+  const hint = facilityHint(groupType, lang, sit)
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>

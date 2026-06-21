@@ -64,6 +64,7 @@
 | `onboarded` | `'1'` | App.enterApp（「重看开场」删除） |
 | `scenic` / `group` / `lang` | id（非法值回落默认） | useGuide persist effect |
 | `interests` | JSON string[] | useGuide persist effect |
+| `age` / `pace` / `mobility` / `purpose` / `firsttime` | 自身情况标签 5 维（默认 youth/day/normal/relax/first，非法回落默认） | useGuide persist effect |
 | `voice` / `avatar` | 音色/形象精调偏好（空=跟随景区默认） | useGuide setter |
 | `dark` | 深色模式偏好 | theme.ts |
 
