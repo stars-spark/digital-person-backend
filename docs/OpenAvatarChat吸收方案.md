@@ -22,7 +22,7 @@
 
 ### ① 模块化架构叙事（0 代码，立即）— 答辩弹药
 OpenAvatarChat 的卖点是"ASR/LLM/TTS/Avatar 可插拔 + 2.2s 延迟"。本项目桥接层
-（`bridge/server.py` 的 `VOICE_MAP`/`AVATAR_MAP`，RAG 可指本地/ECS）本质同一思想。
+（`bridge/server.py` 的 `VOICE_MAP`/`AVATAR_MAP`，RAG 可指本地/云端）本质同一思想。
 **动作**：把这套"可插拔 + 对标 2.2s"写进总体设计文档 / PPT。
 **价值**：直接命中评审对"架构先进性"的观感。零风险。
 
@@ -36,7 +36,7 @@ OpenAvatarChat 的卖点是"ASR/LLM/TTS/Avatar 可插拔 + 2.2s 延迟"。本项
 
 ### ③ TTS 换 CosyVoice（中高，命中"自然度"红线）
 **对方怎么做**：CosyVoice（FunAudioLLM），音色自然、可克隆。
-**本项目落地**：当前 TTS 是 LiveTalking 内置 edge-TTS（桥接传 `tts.ref_file=音色名`）。
+**本项目落地（已完成）**：早期 TTS 为 LiveTalking 内置 edge-TTS（占位）；现已切换为云端实时 Qwen-TTS（0 本地显存），并接入队友 CosyVoice 服务作备选（桥接 `VOICE_MAP` 按音色名映射 `tts.ref_file`）。
 LiveTalking 原生支持 `--tts cosyvoice`，需：
 1. 起一个 CosyVoice 服务（或用百炼 CosyVoice API，省显存）；
 2. LiveTalking 启动参数切到 cosyvoice，桥接 `VOICE_MAP` 改成 CosyVoice 音色/参考音频。
