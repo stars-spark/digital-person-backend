@@ -305,12 +305,15 @@ export default function App() {
 
           {g.status !== 'connected' && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-5 px-7 text-center">
-              {/* 友好的"导游已就位"焦点 */}
+              {/* 友好的"导游已就位"焦点：数字人头像（连接后即化为同一张脸的实时画面） */}
               <div className="relative flex size-20 items-center justify-center">
                 <span className="absolute inset-0 rounded-full bg-primary/15 blur-xl motion-safe:animate-[pulse_2.6s_var(--ease-out)_infinite]" />
-                <span className="relative flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/75 text-2xl font-semibold text-primary-foreground shadow-lg shadow-primary/30">
-                  游
-                </span>
+                <img
+                  src={g.avatarPref ? `/avatars/${g.avatarPref}.jpg` : '/avatars/female_sweet.jpg'}
+                  alt=""
+                  onError={(e) => { if (!e.currentTarget.src.endsWith('/avatars/female_sweet.jpg')) e.currentTarget.src = '/avatars/female_sweet.jpg' }}
+                  className="relative size-16 rounded-full border-2 border-primary/40 object-cover object-top shadow-lg shadow-primary/30"
+                />
               </div>
               <p className="text-[13px] font-medium leading-relaxed text-foreground/70">{t('stage_hint')}</p>
               <button
