@@ -227,9 +227,7 @@ export default function App() {
       style={{ zoom: elder ? 1.12 : 1 } as React.CSSProperties}>
       {/* 顶栏 */}
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-background/85 px-4 py-3 backdrop-blur-xl">
-        <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-base font-semibold text-primary-foreground shadow-sm">
-          途
-        </div>
+        <img src="/logo.svg" alt="途叨叨" width={36} height={36} className="size-9 shrink-0" />
         <div className="leading-tight">
           <div className="text-[15px] font-semibold tracking-tight">途叨叨</div>
           <div className="text-[11px] text-muted-foreground">{t('subtitle')}</div>
