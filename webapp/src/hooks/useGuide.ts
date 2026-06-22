@@ -7,6 +7,7 @@ import * as trace from '@/lib/trace'
 import type { Trace } from '@/lib/trace'
 import { track as trackEvent } from '@/lib/track'
 import { applyScenicTheme } from '@/lib/theme'
+import { watchPositionGCJ02, makeGeofence } from '@/lib/geo'
 
 // iOS Safari 原生播 HLS、不支持 MSE/FLV；安卓 Chromium 反之。
 const isIOS =
@@ -100,6 +101,10 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
   const [avatarPref, setAvatarPrefState] = useState<string>(() => { try { return localStorage.getItem('lingjing.avatar') || '' } catch { return '' } })
   const setVoiceId = useCallback((v: string) => { setVoiceIdState(v); try { localStorage.setItem('lingjing.voice', v) } catch { /* ignore */ } }, [])
   const setAvatarPref = useCallback((a: string) => { setAvatarPrefState(a); try { localStorage.setItem('lingjing.avatar', a) } catch { /* ignore */ } }, [])
+  // 主动开讲（地理围栏）：默认关；开启且已连接时持续定位，走到景点 50m 内自动让数字人开讲
+  const [autoNarrate, setAutoNarrateState] = useState<boolean>(() => { try { return localStorage.getItem('lingjing.autonarrate') === '1' } catch { return false } })
+  const setAutoNarrate = useCallback((v: boolean) => { setAutoNarrateState(v); try { localStorage.setItem('lingjing.autonarrate', v ? '1' : '0') } catch { /* ignore */ } }, [])
+  const [geoArrival, setGeoArrival] = useState('')   // 刚到达的景点名（顶部提示条）
   const voiceRef = useRef(voiceId)
   useEffect(() => { voiceRef.current = voiceId }, [voiceId])
   const scenicRef = useRef(scenic)
@@ -584,10 +589,38 @@ export function useGuide(videoRef: RefObject<HTMLVideoElement | null>) {
     return imported.length
   }, [setVoiceId, setAvatarPref])
 
+  // ── 主动开讲（地理围栏）：开关开 + 已连接 → 持续定位，进入景点 50m 自动开讲 ──────────
+  //    带迟滞(离开 80m 重新武装)+冷却(5min)防反复；关闭/断连/卸载即停。定位失败静默，手动定位仍可用。
+  useEffect(() => {
+    if (!autoNarrate || status !== 'connected') return
+    const fence = makeGeofence(scenic, { radius: 50 })
+    const w = watchPositionGCJ02(
+      (fix) => {
+        const hit = fence.feed(fix.lng, fix.lat, Date.now())
+        if (hit) {
+          setGeoArrival(hit.name)
+          setTraceState(trace.recordVisit(hit.name))
+          track('geo_arrival', { name: hit.name, distance: hit.distance })
+          ask(`请讲讲${hit.name}的故事`)   // 数字人主动开讲（复用问答链路，情境/同行人照常带）
+        }
+      },
+      () => { /* 定位失败静默：不打扰，手动定位仍可用 */ },
+    )
+    return () => w.stop()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoNarrate, status, scenic])
+  // 到达提示条自动收起
+  useEffect(() => {
+    if (!geoArrival) return
+    const id = setTimeout(() => setGeoArrival(''), 6000)
+    return () => clearTimeout(id)
+  }, [geoArrival])
+
   return {
     scenic, setScenic, groupType, setGroupType, interests, setInterests, lang, setLang, guideName,
     age, setAge, pace, setPace, mobility, setMobility, purpose, setPurpose, firstTime, setFirstTime,
     voiceId, setVoiceId, avatarPref, setAvatarPref,
+    autoNarrate, setAutoNarrate, geoArrival, clearGeoArrival: () => setGeoArrival(''),
     status, setStatus, thinking, busy, reply, meta, messages, mic,
     trace: traceState, recordVisit, recordRouteDone, recordRating, track,
     clipUrl, clearClip: () => setClipUrl(''),

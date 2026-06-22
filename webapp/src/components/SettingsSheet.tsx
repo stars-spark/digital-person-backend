@@ -1,4 +1,4 @@
-import { Globe, TextAa, Sun, Moon, CircleHalf, UserCircle, CaretRight, ArrowCounterClockwise } from '@phosphor-icons/react'
+import { Globe, TextAa, Sun, Moon, CircleHalf, UserCircle, CaretRight, ArrowCounterClockwise, NavigationArrow } from '@phosphor-icons/react'
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { LANGS, makeT } from '@/lib/i18n'
 import type { Lang } from '@/lib/i18n'
@@ -9,12 +9,13 @@ interface Props {
   open: boolean; onOpenChange: (o: boolean) => void
   lang: Lang; setLang: (l: Lang) => void
   elder: boolean; setElder: (e: boolean) => void
+  autoNarrate: boolean; setAutoNarrate: (v: boolean) => void
   dark: DarkMode; setDark: (m: DarkMode) => void
   onOpenAvatar: () => void
   onReplay: () => void
 }
 
-export default function SettingsSheet({ open, onOpenChange, lang, setLang, elder, setElder, dark, setDark, onOpenAvatar, onReplay }: Props) {
+export default function SettingsSheet({ open, onOpenChange, lang, setLang, elder, setElder, autoNarrate, setAutoNarrate, dark, setDark, onOpenAvatar, onReplay }: Props) {
   const t = makeT(lang)
   const MODES: { id: DarkMode; label: string; icon: React.ReactNode }[] = [
     { id: 'light', label: t('mode_light'), icon: <Sun className="size-4" weight="duotone" /> },
@@ -99,8 +100,23 @@ export default function SettingsSheet({ open, onOpenChange, lang, setLang, elder
           >
             <TextAa className="size-5 text-primary" weight="duotone" />
             <span className="flex-1 text-sm font-medium">{t('set_elder')}</span>
-            <span className={cn('relative h-6 w-11 rounded-full transition duration-200 ease-[var(--ease-out)]', elder ? 'bg-primary' : 'bg-muted')}>
+            <span className={cn('relative h-6 w-11 shrink-0 rounded-full transition duration-200 ease-[var(--ease-out)]', elder ? 'bg-primary' : 'bg-muted')}>
               <span className={cn('absolute top-0.5 size-5 rounded-full bg-white shadow transition-all duration-200 ease-[var(--ease-out)]', elder ? 'left-[22px]' : 'left-0.5')} />
+            </span>
+          </button>
+
+          {/* 走到景点自动讲解（地理围栏主动开讲） */}
+          <button
+            onClick={() => setAutoNarrate(!autoNarrate)}
+            className="flex items-center gap-3 rounded-xl border bg-card p-3.5 text-left active:scale-[0.99]"
+          >
+            <NavigationArrow className="size-5 shrink-0 text-primary" weight="duotone" />
+            <span className="flex-1">
+              <span className="block text-sm font-medium">{t('set_autonarrate')}</span>
+              <span className="block text-[12px] leading-snug text-muted-foreground">{t('set_autonarrate_sub')}</span>
+            </span>
+            <span className={cn('relative h-6 w-11 shrink-0 rounded-full transition duration-200 ease-[var(--ease-out)]', autoNarrate ? 'bg-primary' : 'bg-muted')}>
+              <span className={cn('absolute top-0.5 size-5 rounded-full bg-white shadow transition-all duration-200 ease-[var(--ease-out)]', autoNarrate ? 'left-[22px]' : 'left-0.5')} />
             </span>
           </button>
         </div>

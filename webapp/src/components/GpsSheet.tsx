@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { MapPin, Crosshair, SpeakerHigh, CircleNotch, NavigationArrow } from '@phosphor-icons/react'
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
-import * as api from '@/lib/api'
-import type { NearbyItem, SimSpot } from '@/lib/api'
+import { getPositionGCJ02, nearestPOIs, simSpots } from '@/lib/geo'
+import type { NearbyPOI } from '@/lib/geo'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -12,34 +12,37 @@ interface Props {
 }
 
 export default function GpsSheet({ open, onOpenChange, scenic, onAsk }: Props) {
-  const [items, setItems] = useState<NearbyItem[]>([])
-  const [sims, setSims] = useState<SimSpot[]>([])
+  const [items, setItems] = useState<NearbyPOI[]>([])
+  const [sims, setSims] = useState<{ label: string; lng: number; lat: number }[]>([])
   const [origin, setOrigin] = useState('')      // 当前定位来源描述
   const [locating, setLocating] = useState(false)
   const [err, setErr] = useState('')
 
-  // 抽屉打开时拉模拟点（即使没真实 GPS 也能演示）
+  // 抽屉打开时取该景区演示点（前端 routeData，与真坐标同基准 GCJ-02，即使没真实 GPS 也能演示）
   useEffect(() => {
     if (!open) return
-    api.nearby(scenic).then((r) => setSims(r.sim_spots)).catch(() => setSims([]))
+    setSims(simSpots(scenic))
   }, [open, scenic])
 
-  const resolve = async (lat: number, lng: number, label: string) => {
+  // 坐标统一为 GCJ-02（高德底图同基准）→ 前端算最近 POI，无需后端
+  const resolve = (lng: number, lat: number, label: string) => {
     setErr('')
-    const r = await api.nearby(scenic, lat, lng)
-    setItems(r.items)
+    const r = nearestPOIs(scenic, lng, lat)
+    setItems(r)
     setOrigin(label)
-    if (!r.items.length) setErr('该景区暂未配置坐标')
+    if (!r.length) setErr('该景区暂未配置坐标')
   }
 
-  const useRealGps = () => {
+  const useRealGps = async () => {
     setErr(''); setLocating(true)
-    if (!navigator.geolocation) { setErr('设备不支持定位'); setLocating(false); return }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { setLocating(false); resolve(pos.coords.latitude, pos.coords.longitude, '你的真实位置') },
-      (e) => { setLocating(false); setErr('定位失败（需 HTTPS 授权）：' + e.message) },
-      { enableHighAccuracy: true, timeout: 8000 },
-    )
+    try {
+      const fix = await getPositionGCJ02({ timeout: 8000 })
+      const src = fix.source === 'amap' ? '高德定位' : '设备定位'
+      const acc = fix.accuracy ? ` · ±${fix.accuracy}m` : ''
+      resolve(fix.lng, fix.lat, `你的位置（${src}${acc}）`)
+    } catch (e) {
+      setErr((e instanceof Error ? e.message : String(e)))
+    } finally { setLocating(false) }
   }
 
   const speak = (name: string) => { onAsk(name); onOpenChange(false) }
@@ -75,7 +78,7 @@ export default function GpsSheet({ open, onOpenChange, scenic, onAsk }: Props) {
                 {sims.map((s) => (
                   <button
                     key={s.label}
-                    onClick={() => resolve(s.lat, s.lng, s.label)}
+                    onClick={() => resolve(s.lng, s.lat, s.label)}
                     className={cn('rounded-full border px-3.5 py-2 text-[13px] font-medium transition duration-200 ease-[var(--ease-out)] active:scale-95',
                       origin === s.label ? 'border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/25' : 'bg-card hover:border-primary/30')}
                   >
@@ -97,7 +100,7 @@ export default function GpsSheet({ open, onOpenChange, scenic, onAsk }: Props) {
               </div>
               <div className="flex flex-col gap-2">
                 {items.map((it, i) => (
-                  <div key={it.name}
+                  <div key={it.id}
                     className={cn('flex items-center gap-3 rounded-2xl border p-3.5 transition duration-200 ease-[var(--ease-out)]',
                       i === 0 ? 'border-sweet/40 bg-sweet/[0.07]' : 'bg-card')}>
                     <div className="flex-1">

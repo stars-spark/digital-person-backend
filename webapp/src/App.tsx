@@ -263,6 +263,10 @@ export default function App() {
       {handoff && (
         <HandoffBanner title={handoff.title} detail={handoff.detail} tone={handoff.tone} onDismiss={() => setHandoff(null)} />
       )}
+      {/* 主动开讲：走进景点围栏，顶部提示「已到达 X，为你讲解」（数字人同时开口） */}
+      {g.geoArrival && (
+        <HandoffBanner title={t('geo_arrived', { name: g.geoArrival })} detail={scenicName} tone="ok" onDismiss={g.clearGeoArrival} />
+      )}
 
       <main className="flex flex-1 flex-col gap-4 px-4 pb-4 pt-4">
         {/* 数字人舞台 + 字幕（成组：脸在上、话在下；字幕为独立条，不遮画面） */}
@@ -404,6 +408,7 @@ export default function App() {
       <SettingsSheet
         open={settingsOpen} onOpenChange={setSettingsOpen}
         lang={g.lang} setLang={g.setLang} elder={elder} setElder={setElder}
+        autoNarrate={g.autoNarrate} setAutoNarrate={g.setAutoNarrate}
         dark={dark} setDark={setDark}
         onOpenAvatar={() => { g.track('feature_open', { feature: 'avatar' }); setAvatarOpen(true) }}
         onReplay={replayOnboarding}
