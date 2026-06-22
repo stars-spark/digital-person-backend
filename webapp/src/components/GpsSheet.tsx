@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { MapPin, Crosshair, SpeakerHigh, CircleNotch, NavigationArrow } from '@phosphor-icons/react'
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
-import { getPositionGCJ02, nearestPOIs, simSpots } from '@/lib/geo'
+import { requestBrowserPosition, nearestPOIs, simSpots } from '@/lib/geo'
 import type { NearbyPOI } from '@/lib/geo'
 import { cn } from '@/lib/utils'
 
@@ -33,16 +33,13 @@ export default function GpsSheet({ open, onOpenChange, scenic, onAsk }: Props) {
     if (!r.length) setErr('该景区暂未配置坐标')
   }
 
-  const useRealGps = async () => {
+  // ⚠️ 不能写成 async/await：iOS Safari 要求定位调用紧贴点击手势，先 await 会丢手势 → 不弹授权框。
+  const useRealGps = () => {
     setErr(''); setLocating(true)
-    try {
-      const fix = await getPositionGCJ02({ timeout: 8000 })
-      const src = fix.source === 'amap' ? '高德定位' : '设备定位'
-      const acc = fix.accuracy ? ` · ±${fix.accuracy}m` : ''
-      resolve(fix.lng, fix.lat, `你的位置（${src}${acc}）`)
-    } catch (e) {
-      setErr((e instanceof Error ? e.message : String(e)))
-    } finally { setLocating(false) }
+    requestBrowserPosition(
+      (fix) => { resolve(fix.lng, fix.lat, `你的位置（±${fix.accuracy}m）`); setLocating(false) },
+      (msg) => { setErr(msg); setLocating(false) },
+    )
   }
 
   const speak = (name: string) => { onAsk(name); onOpenChange(false) }

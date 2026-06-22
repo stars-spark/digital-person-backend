@@ -5,7 +5,6 @@
 //   失败回退浏览器定位再做 WGS-84 → GCJ-02 转换。
 // POI 真坐标取自 routeData（高德 POI 检索的 GCJ-02），不再依赖后端那套粗糙坐标。
 import { SCENIC_ROUTES } from '@/lib/routeData'
-import { loadAMap, amapConfigured } from '@/lib/amap'
 
 const PI = Math.PI
 const A = 6378245.0                     // 克拉索夫斯基椭球长半轴
@@ -53,61 +52,37 @@ export function haversine(a: [number, number], b: [number, number]): number {
   return 2 * R * Math.asin(Math.sqrt(s))
 }
 
-export interface GeoFix { lng: number; lat: number; accuracy: number; source: 'amap' | 'browser' }
-
-// 高德定位插件：原生 GCJ-02，国内最准（融合卫星+网络），无需坐标转换。
-function amapPosition(timeout: number): Promise<GeoFix> {
-  return new Promise((resolve, reject) => {
-    if (!amapConfigured()) { reject(new Error('高德未配置')); return }
-    loadAMap().then((AMapRaw) => {
-      const AMap = AMapRaw as { plugin: (n: string, cb: () => void) => void; Geolocation: new (o: object) => { getCurrentPosition: (cb: (s: string, r: GeoResult) => void) => void } }
-      AMap.plugin('AMap.Geolocation', () => {
-        const geo = new AMap.Geolocation({ enableHighAccuracy: true, timeout, GeoLocationFirst: true, noIpLocate: 0, showButton: false })
-        geo.getCurrentPosition((status, result) => {
-          if (status === 'complete' && result.position) {
-            resolve({ lng: result.position.lng, lat: result.position.lat, accuracy: Math.round(result.accuracy ?? 0), source: 'amap' })
-          } else reject(new Error(result?.message || '高德定位失败'))
-        })
-      })
-    }).catch(reject)
-  })
-}
-interface GeoResult { position?: { lng: number; lat: number }; accuracy?: number; message?: string }
+export interface GeoFix { lng: number; lat: number; accuracy: number; source: 'browser' }
 
 // 浏览器定位失败 → 按错误码给可操作的中文提示（区分"拒绝/不可用/超时"，并指向「模拟位置」）。
 function geoErrorMessage(e: GeolocationPositionError): string {
   if (e.code === 1) {   // PERMISSION_DENIED
-    return '无法定位：定位权限被拒绝。微信/扫码等内置浏览器会拦截定位，请用 Safari 或系统浏览器打开；'
-      + '并在 iPhone「设置 → 隐私与安全性 → 定位服务」开启、允许浏览器定位。也可直接用下方「模拟位置」演示。'
+    return '无法定位：定位权限被拒绝或未授权。请用 Safari/系统浏览器打开（微信/扫码内置浏览器会拦截定位），'
+      + '并在 iPhone「设置 → 隐私与安全性 → 定位服务」开启、且把 Safari 设为「使用 App 期间」。也可用下方「模拟位置」演示。'
   }
   if (e.code === 2) return '位置暂不可用，请到开阔处重试，或用下方「模拟位置」。'   // POSITION_UNAVAILABLE
   if (e.code === 3) return '定位超时，请重试，或用下方「模拟位置」。'              // TIMEOUT
   return '定位失败：' + e.message
 }
 
-// 浏览器定位（WGS-84）+ 转 GCJ-02。回退路径。
-function browserPositionGCJ02(timeout: number): Promise<GeoFix> {
-  return new Promise((resolve, reject) => {
-    if (!('geolocation' in navigator)) { reject(new Error('当前浏览器不支持定位，请用 Safari 打开，或用下方「模拟位置」。')); return }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const [lng, lat] = wgs84ToGcj02(pos.coords.longitude, pos.coords.latitude)
-        resolve({ lng, lat, accuracy: Math.round(pos.coords.accuracy), source: 'browser' })
-      },
-      (e) => reject(new Error(geoErrorMessage(e))),
-      { enableHighAccuracy: true, timeout, maximumAge: 0 },
-    )
-  })
+// 直接在用户手势内请求浏览器定位（关键修复）：iOS Safari 要求 geolocation 调用紧贴用户手势——
+// 调用前不能先 await 任何异步（如加载高德脚本），否则会丢失手势激活；且短时间重复调用会触发
+// iOS 17.4+ 限流，表现为"无弹窗直接拒绝"。故这里只用浏览器原生定位、单次同步调用，再就地转 GCJ-02。
+export function requestBrowserPosition(onFix: (f: GeoFix) => void, onError: (msg: string) => void, timeout = 10000): void {
+  if (!('geolocation' in navigator)) { onError('当前浏览器不支持定位，请用 Safari 打开，或用下方「模拟位置」。'); return }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const [lng, lat] = wgs84ToGcj02(pos.coords.longitude, pos.coords.latitude)
+      onFix({ lng, lat, accuracy: Math.round(pos.coords.accuracy), source: 'browser' })
+    },
+    (e) => onError(geoErrorMessage(e)),
+    { enableHighAccuracy: true, timeout, maximumAge: 0 },
+  )
 }
 
-// 取当前定位，统一为 GCJ-02。优先高德，失败回退浏览器+转换。
-export async function getPositionGCJ02(opts: { timeout?: number } = {}): Promise<GeoFix> {
-  const timeout = opts.timeout ?? 8000
-  try {
-    return await amapPosition(timeout)
-  } catch {
-    return await browserPositionGCJ02(timeout)
-  }
+// Promise 版（供非手势/异步场景）。⚠️ 用户手势内取定位请直接用 requestBrowserPosition（同步调用，iOS 才弹窗）。
+export function getPositionGCJ02(opts: { timeout?: number } = {}): Promise<GeoFix> {
+  return new Promise((resolve, reject) => requestBrowserPosition(resolve, (m) => reject(new Error(m)), opts.timeout ?? 10000))
 }
 
 export interface ScenicPOI { id: string; name: string; lng: number; lat: number }
