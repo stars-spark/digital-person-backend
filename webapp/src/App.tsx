@@ -227,10 +227,12 @@ export default function App() {
       style={{ zoom: elder ? 1.12 : 1 } as React.CSSProperties}>
       {/* 顶栏 */}
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b bg-background/85 px-4 py-3 backdrop-blur-xl">
-        <img src="/logo.svg" alt="途叨叨" width={36} height={36} className="size-9 shrink-0" />
-        <div className="leading-tight">
-          <div className="text-[15px] font-semibold tracking-tight">途叨叨</div>
-          <div className="text-[11px] text-muted-foreground">{t('subtitle')}</div>
+        <div className="flex items-center gap-2.5">
+          <img src="/logo.svg" alt="途叨叨" width={27} height={32} className="h-8 w-auto shrink-0" />
+          <div className="leading-tight">
+            <div className="text-[15px] font-semibold tracking-tight">途叨叨</div>
+            <div className="text-[11px] text-muted-foreground">{t('subtitle')}</div>
+          </div>
         </div>
         <Select value={g.scenic} onValueChange={g.setScenic}>
           <SelectTrigger size="sm" className="ml-auto rounded-full">

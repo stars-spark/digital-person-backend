@@ -103,8 +103,8 @@ export default function Onboarding({
         </div>
 
         <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 pb-4">
-          <div className="anim-fade-up flex items-center gap-2" style={{ animationDelay: '40ms' }}>
-            <img src="/logo.svg" alt="途叨叨" width={32} height={32} className="size-8 shrink-0" />
+          <div className="anim-fade-up flex items-center gap-2.5" style={{ animationDelay: '40ms' }}>
+            <img src="/logo.svg" alt="途叨叨" width={24} height={28} className="h-7 w-auto shrink-0" />
             <span className="text-[15px] font-semibold tracking-tight">途叨叨</span>
           </div>
 
