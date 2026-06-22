@@ -74,16 +74,27 @@ function amapPosition(timeout: number): Promise<GeoFix> {
 }
 interface GeoResult { position?: { lng: number; lat: number }; accuracy?: number; message?: string }
 
+// 浏览器定位失败 → 按错误码给可操作的中文提示（区分"拒绝/不可用/超时"，并指向「模拟位置」）。
+function geoErrorMessage(e: GeolocationPositionError): string {
+  if (e.code === 1) {   // PERMISSION_DENIED
+    return '无法定位：定位权限被拒绝。微信/扫码等内置浏览器会拦截定位，请用 Safari 或系统浏览器打开；'
+      + '并在 iPhone「设置 → 隐私与安全性 → 定位服务」开启、允许浏览器定位。也可直接用下方「模拟位置」演示。'
+  }
+  if (e.code === 2) return '位置暂不可用，请到开阔处重试，或用下方「模拟位置」。'   // POSITION_UNAVAILABLE
+  if (e.code === 3) return '定位超时，请重试，或用下方「模拟位置」。'              // TIMEOUT
+  return '定位失败：' + e.message
+}
+
 // 浏览器定位（WGS-84）+ 转 GCJ-02。回退路径。
 function browserPositionGCJ02(timeout: number): Promise<GeoFix> {
   return new Promise((resolve, reject) => {
-    if (!('geolocation' in navigator)) { reject(new Error('设备不支持定位')); return }
+    if (!('geolocation' in navigator)) { reject(new Error('当前浏览器不支持定位，请用 Safari 打开，或用下方「模拟位置」。')); return }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const [lng, lat] = wgs84ToGcj02(pos.coords.longitude, pos.coords.latitude)
         resolve({ lng, lat, accuracy: Math.round(pos.coords.accuracy), source: 'browser' })
       },
-      (e) => reject(new Error('定位失败（需 HTTPS 授权）：' + e.message)),
+      (e) => reject(new Error(geoErrorMessage(e))),
       { enableHighAccuracy: true, timeout, maximumAge: 0 },
     )
   })

@@ -89,7 +89,7 @@ export default function GpsSheet({ open, onOpenChange, scenic, onAsk }: Props) {
             </div>
           )}
 
-          {err && <p className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-[13px] text-destructive">{err}</p>}
+          {err && <p className="mt-3 rounded-xl bg-amber-500/10 px-3 py-2.5 text-[12.5px] leading-relaxed text-amber-700 dark:text-amber-400">{err}</p>}
 
           {/* 结果：最近景点 */}
           {items.length > 0 && (
