@@ -1,11 +1,19 @@
 ' 共享样式：所有图 !include 此文件，保证风格统一
+' A4 五号字纪律：dpi=300 + 字号 10.5pt（=44px@300dpi，插入竖版 A4 按原生尺寸显示即为五号）。
+' 渲染后 PNG 须 ≤1890px 宽（=16cm@300dpi 文字栏宽），超宽必须改为纵向布局/拆行，否则 Word 缩放后字跌破五号。
 skinparam defaultFontName "Noto Sans CJK SC"
+skinparam defaultFontSize 16
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam roundCorner 8
-skinparam dpi 150
+skinparam dpi 300
+' 加大节点/层间距，避免连线压住文字、字被遮挡
+skinparam nodesep 50
+skinparam ranksep 65
+skinparam padding 4
 skinparam ArrowColor #34495E
 skinparam ArrowFontColor #34495E
+skinparam ArrowFontSize 15
 
 skinparam rectangle {
   BorderColor #2E86DE

@@ -1,6 +1,8 @@
 @startuml 02_部署架构
 !include _style.puml
 
+top to bottom direction
+
 node "手机（同 WiFi 或公网 HTTPS 网关）" as PHONE {
   [手机浏览器\niOS HLS / 安卓 FLV] as WEB
 }
@@ -20,6 +22,15 @@ cloud "云端大模型与嵌入服务" as DS {
   [问答 / 嵌入 / 语音合成] as DSC
 }
 
+' 隐藏边把 HOST 内 4 个组件压成纵向单列，避免横向铺开
+BR -[hidden]-> RAG
+RAG -[hidden]-> LT
+LT -[hidden]-> SRS
+' 隐藏边把顶层节点压成自上而下，避免三节点横向并排
+PHONE -[hidden]-> HOST
+HOST -[hidden]-> CARDLESS
+CARDLESS -[hidden]-> DS
+
 WEB --> BR : 提问
 WEB <-- SRS : 数字人视频流
 BR --> RAG
@@ -27,7 +38,4 @@ BR --> LT
 LT --> SRS : RTMP 推流
 RAG ..> DSC
 CLRAG ..> DSC
-
-note bottom of HOST : 单台 GPU 节点即可独立支撑全栈；\n本地演示走同 WiFi，云端部署经统一网关对外。
-note bottom of CARDLESS : 规模化时逻辑后端可拆到无卡云常驻，\n仅 GPU 渲染留在 GPU 节点。
 @enduml

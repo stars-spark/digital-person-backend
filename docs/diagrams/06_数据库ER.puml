@@ -52,7 +52,7 @@ package "SQLite（会话 / 行为 / 配置 / 知识 / 接力）" {
     file_path : TEXT
     created_at : TEXT
   }
-  entity "faq_items / text_items / uploaded_docs\n管理端知识条目" as kb {
+  entity "faq_items / text_items\n/ uploaded_docs\n管理端知识条目" as kb {
     * id : INTEGER «PK»
     --
     scenic_id : TEXT
@@ -73,11 +73,19 @@ package "ChromaDB（向量库 · 命名空间隔离）" {
   entity "collection: scenic_{id}\n每景区一个" as coll {
     * id : UUID «PK»
     --
-    document : TEXT（chunk 文本）
-    embedding : FLOAT[1024]（BGE-M3）
-    metadata.source : TEXT（来源文件）
+    document : TEXT（chunk）
+    embedding : FLOAT[1024]
+    metadata.source : TEXT
   }
 }
+
+' 隐藏边把 7 张表压成两列，避免横向铺开
+conv -[hidden]-> dhc
+dhc -[hidden]-> bg
+bg -[hidden]-> ho
+evt -[hidden]-> theme
+theme -[hidden]-> kb
+conv -[hidden]right-> evt
 
 conv ||..o{ evt : 同一 session_id\n关联
 conv ||..o{ ho : 快照取自\n会话历史

@@ -12,7 +12,8 @@ render() {
   base="$(basename "$f")"
   [[ "$base" == _* ]] && return 0   # 跳过 _style.puml / _probe.puml 等
   echo "渲染 $base ..."
-  java -jar tools/plantuml.jar -tpng "$f"
+  # dpi=300 下尺寸会超过 PlantUML 默认 4096px 上限被截断，提高限制
+  java -DPLANTUML_LIMIT_SIZE=16384 -jar tools/plantuml.jar -tpng "$f"
 }
 
 if [[ -n "$1" ]]; then

@@ -8,24 +8,23 @@ if (规则命中?) then (是 · 0ms)
   :直接路由;
 else (否)
   if (问题模糊?\n短问题+有上下文) then (是)
-    :qwen-turbo\nLLM 兜底分类;
+    :qwen-flash\nLLM 兜底分类;
   else (否)
     :默认 qa;
   endif
 endif
 
-switch (意图)
-case ( qa 知识问答 )
+if (意图) then ( qa 知识问答 )
   :走完整 RAG 检索;
-case ( navigation 路线 )
+elseif ( navigation 路线 ) then
   :注入逐段指路指令\n+ 实时客流/天气;
-case ( recommend 推荐 )
+elseif ( recommend 推荐 ) then
   :注入推荐指令\n+ 实时客流/天气;
-case ( empathy 安抚 )
+elseif ( empathy 安抚 ) then
   :注入共情关怀指令;
-case ( chitchat 闲聊 )
+else ( chitchat 闲聊 )
   :跳过检索\n轻量应答;
-endswitch
+endif
 
 :注入差异化任务指令\n+ 同行人格(group_type);
 :统一进入生成链路;
